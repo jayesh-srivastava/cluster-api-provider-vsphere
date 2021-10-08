@@ -26,13 +26,13 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
+	"sigs.k8s.io/cluster-api-provider-vsphere/api/v1alpha4"
+	"sigs.k8s.io/cluster-api-provider-vsphere/controllers"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 	ctrlmgr "sigs.k8s.io/controller-runtime/pkg/manager"
 	ctrlsig "sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
-	"sigs.k8s.io/cluster-api-provider-vsphere/api/v1alpha4"
-	"sigs.k8s.io/cluster-api-provider-vsphere/controllers"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/constants"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/context"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/manager"
@@ -152,60 +152,63 @@ func main() {
 	// Create a function that adds all of the controllers and webhooks to the
 	// manager.
 	addToManager := func(ctx *context.ControllerManagerContext, mgr ctrlmgr.Manager) error {
+		if managerOpts.Port != 0 {
+			setupLog.Info("webhook port is enabled, set up webhook servers")
+			if err := (&v1alpha4.VSphereClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
 
-		if err := (&v1alpha4.VSphereClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
+			if err := (&v1alpha4.VSphereMachine{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
+			if err := (&v1alpha4.VSphereMachineList{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
 
-		if err := (&v1alpha4.VSphereMachine{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
-		if err := (&v1alpha4.VSphereMachineList{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
+			if err := (&v1alpha4.VSphereMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
+			if err := (&v1alpha4.VSphereMachineTemplateList{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
 
-		if err := (&v1alpha4.VSphereMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
-		if err := (&v1alpha4.VSphereMachineTemplateList{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
+			if err := (&v1alpha4.VSphereVM{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
+			if err := (&v1alpha4.VSphereVMList{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
 
-		if err := (&v1alpha4.VSphereVM{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
-		if err := (&v1alpha4.VSphereVMList{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
+			if err := (&v1alpha4.VSphereDeploymentZone{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
+			if err := (&v1alpha4.VSphereDeploymentZoneList{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
 
-		if err := (&v1alpha4.VSphereDeploymentZone{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
-		if err := (&v1alpha4.VSphereDeploymentZoneList{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
-
-		if err := (&v1alpha4.VSphereFailureDomain{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
-		if err := (&v1alpha4.VSphereFailureDomainList{}).SetupWebhookWithManager(mgr); err != nil {
-			return err
-		}
-
-		if err := controllers.AddClusterControllerToManager(ctx, mgr); err != nil {
-			return err
-		}
-		if err := controllers.AddMachineControllerToManager(ctx, mgr); err != nil {
-			return err
-		}
-		if err := controllers.AddVMControllerToManager(ctx, mgr); err != nil {
-			return err
-		}
-		if err := controllers.AddVsphereClusterIdentityControllerToManager(ctx, mgr); err != nil {
-			return err
-		}
-		if err := controllers.AddVSphereDeploymentZoneControllerToManager(ctx, mgr); err != nil {
-			return err
+			if err := (&v1alpha4.VSphereFailureDomain{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
+			if err := (&v1alpha4.VSphereFailureDomainList{}).SetupWebhookWithManager(mgr); err != nil {
+				return err
+			}
+		} else {
+			setupLog.Info("webhook port is disabled, skip setting managers")
+			if err := controllers.AddClusterControllerToManager(ctx, mgr); err != nil {
+				return err
+			}
+			if err := controllers.AddMachineControllerToManager(ctx, mgr); err != nil {
+				return err
+			}
+			if err := controllers.AddVMControllerToManager(ctx, mgr); err != nil {
+				return err
+			}
+			if err := controllers.AddVsphereClusterIdentityControllerToManager(ctx, mgr); err != nil {
+				return err
+			}
+			if err := controllers.AddVSphereDeploymentZoneControllerToManager(ctx, mgr); err != nil {
+				return err
+			}
 		}
 
 		return nil

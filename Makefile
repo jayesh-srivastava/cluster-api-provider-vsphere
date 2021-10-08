@@ -91,10 +91,10 @@ RELEASE_REGISTRY := gcr.io/cluster-api-provider-vsphere/release
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Development Docker variables
-DEV_REGISTRY ?= gcr.io/$(shell gcloud config get-value project)
-DEV_CONTROLLER_IMG ?= $(DEV_REGISTRY)/vsphere-$(IMAGE_NAME)
-DEV_TAG ?= dev
-DEV_MANIFEST_IMG := $(DEV_CONTROLLER_IMG)-$(ARCH)
+DEV_REGISTRY ?= gcr.io/spectro-images-public/deepak/release/cluster-api-provider-vsphere
+DEV_CONTROLLER_IMG ?= $(DEV_REGISTRY)/cluster-api-vsphere-controller
+DEV_TAG ?= spectro-v0.8.1
+DEV_MANIFEST_IMG := $(DEV_CONTROLLER_IMG)
 
 # Set build time variables including git version details
 LDFLAGS := $(shell hack/version.sh)
