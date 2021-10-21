@@ -161,7 +161,7 @@ func (r vmReconciler) Reconcile(ctx goctx.Context, req ctrl.Request) (_ ctrl.Res
 	if !clusterutilv1.HasOwner(vsphereVM.OwnerReferences, infrav1.GroupVersion.String(), []string{"HAProxyLoadBalancer"}) {
 		// Fetch the owner VSphereMachine.
 		vsphereMachine, err := util.GetOwnerVSphereMachine(r, r.Client, vsphereVM.ObjectMeta)
-		if err != nil {
+		if err != nil || vsphereMachine == nil {
 			r.Logger.Info("Owner VSphereMachine not found, won't reconcile", "key", req.NamespacedName)
 			return reconcile.Result{}, nil
 		}
@@ -179,7 +179,11 @@ func (r vmReconciler) Reconcile(ctx goctx.Context, req ctrl.Request) (_ ctrl.Res
 		if failureDomain := machine.Spec.FailureDomain; failureDomain != nil {
 			vsphereFailureDomain = &infrav1.VSphereFailureDomain{}
 			if err := r.Client.Get(r, apitypes.NamespacedName{Name: *failureDomain}, vsphereFailureDomain); err != nil {
-				return reconcile.Result{}, errors.Wrapf(err, "failed to find vsphere failure domain %s", *failureDomain)
+				if apierrors.IsNotFound(err) && !vsphereVM.GetDeletionTimestamp().IsZero() {
+					r.Logger.Info("we got deleting machine with missing failure domain go ahead")
+				} else {
+					return reconcile.Result{}, errors.Wrapf(err, "failed to find vsphere failure domain %s", *failureDomain)
+				}
 			}
 		}
 	}
