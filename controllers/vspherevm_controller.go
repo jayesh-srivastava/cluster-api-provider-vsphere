@@ -181,6 +181,11 @@ func (r vmReconciler) Reconcile(ctx goctx.Context, req ctrl.Request) (_ ctrl.Res
 			if err := r.Client.Get(r, apitypes.NamespacedName{Name: *failureDomain}, vsphereFailureDomain); err != nil {
 				if apierrors.IsNotFound(err) && !vsphereVM.GetDeletionTimestamp().IsZero() {
 					r.Logger.Info("we got deleting machine with missing failure domain go ahead")
+				} else if apierrors.IsNotFound(err) {
+					// even after v1alpha4 upgrae we decided to keep
+					// old failuredomains in machinedeployments
+					// so skip if failuredomain not found
+					r.Logger.Info("failuredomain not found skip for non controlplane mahcines", "vm", vsphereVM.GetName(), "failuredomain", failureDomain)
 				} else {
 					return reconcile.Result{}, errors.Wrapf(err, "failed to find vsphere failure domain %s", *failureDomain)
 				}
