@@ -20,7 +20,6 @@ import (
 	goctx "context"
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -430,7 +429,17 @@ func shouldIncludeZone(zone infrav1.VSphereDeploymentZone, cluster *infrav1.VSph
 		return false
 	}
 	deploymentZonesList := strings.Split(deploymentZones, ":")
-	return zone.Spec.Server == cluster.Spec.Server && len(deploymentZonesList) > sort.SearchStrings(deploymentZonesList, zone.GetName())
+	return zone.Spec.Server == cluster.Spec.Server && contains(deploymentZonesList, zone.GetName())
+}
+
+func contains(list []string, search string) bool {
+	for _, item := range list {
+		if item == search {
+			return true
+		}
+	}
+
+	return false
 }
 
 var (
