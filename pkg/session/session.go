@@ -216,19 +216,21 @@ func clearCache(sessionKey string) {
 // newManager creates a Manager that encompasses the REST Client for the VSphere tagging API
 func newManager(ctx context.Context, logger logr.Logger, sessionKey string, client *vim25.Client, user *url.Userinfo, feature Feature) (*tags.Manager, error) {
 	rc := rest.NewClient(client)
-	rc.Transport = keepalive.NewHandlerREST(rc, feature.KeepAliveDuration, func() error {
-		s, err := rc.Session(ctx)
-		if err != nil {
-			return err
-		}
-		if s != nil {
-			return nil
-		}
+	if feature.EnableKeepAlive {
+		rc.Transport = keepalive.NewHandlerREST(rc, feature.KeepAliveDuration, func() error {
+			s, err := rc.Session(ctx)
+			if err != nil {
+				return err
+			}
+			if s != nil {
+				return nil
+			}
 
-		logger.Info("rest client session expired, clearing cache")
-		clearCache(sessionKey)
-		return nil
-	})
+			logger.Info("rest client session expired, clearing cache")
+			clearCache(sessionKey)
+			return nil
+		})
+	}
 	err := rc.Login(ctx, user)
 	if err != nil {
 		return nil, err
