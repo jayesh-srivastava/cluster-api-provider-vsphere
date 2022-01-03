@@ -28,6 +28,7 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
+	"github.com/vmware/govmomi/session/keepalive"
 	"github.com/vmware/govmomi/vapi/rest"
 	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
@@ -143,7 +144,7 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 	// Assign the finder to the session.
 	session.Finder = find.NewFinder(session.Client.Client, false)
 	// Assign tag manager to the session.
-	manager, err := newManager(ctx, client.Client, soapURL.User)
+	manager, err := newManager(ctx, logger, sessionKey, client.Client, soapURL.User, params.feature)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create tags manager")
 	}
@@ -213,8 +214,21 @@ func clearCache(sessionKey string) {
 }
 
 // newManager creates a Manager that encompasses the REST Client for the VSphere tagging API
-func newManager(ctx context.Context, client *vim25.Client, user *url.Userinfo) (*tags.Manager, error) {
+func newManager(ctx context.Context, logger logr.Logger, sessionKey string, client *vim25.Client, user *url.Userinfo, feature Feature) (*tags.Manager, error) {
 	rc := rest.NewClient(client)
+	rc.Transport = keepalive.NewHandlerREST(rc, feature.KeepAliveDuration, func() error {
+		s, err := rc.Session(ctx)
+		if err != nil {
+			return err
+		}
+		if s != nil {
+			return nil
+		}
+
+		logger.Info("rest client session expired, clearing cache")
+		clearCache(sessionKey)
+		return nil
+	})
 	err := rc.Login(ctx, user)
 	if err != nil {
 		return nil, err
