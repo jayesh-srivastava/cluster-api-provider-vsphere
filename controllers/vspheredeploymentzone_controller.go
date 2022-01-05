@@ -102,20 +102,22 @@ func (r vsphereDeploymentZoneReconciler) Reconcile(ctx goctx.Context, request re
 		}
 		return reconcile.Result{}, err
 	}
-	
-	vsphereClusterList := &infrav1.VSphereClusterList{}
-	if err := r.Client.List(ctx, vsphereClusterList, client.InNamespace(r.Namespace)); err != nil {
-		return reconcile.Result{}, err
-	}
 
-	if len(vsphereClusterList.Items) != 1 {
-		logr.V(4).Info("found more than one cluster in namespace", "namespace", r.Namespace)
-		return reconcile.Result{}, nil
-	}
+	if r.Namespace != "" {
+		vsphereClusterList := &infrav1.VSphereClusterList{}
+		if err := r.Client.List(ctx, vsphereClusterList, client.InNamespace(r.Namespace)); err != nil {
+			return reconcile.Result{}, err
+		}
 
-	if !shouldIncludeZone(*vsphereDeploymentZone, &vsphereClusterList.Items[0]) {
-		logr.V(4).Info("deploymentzone not belonging to this cluster skip reconcile", "name", vsphereDeploymentZone.Name)
-		return reconcile.Result{}, nil
+		if len(vsphereClusterList.Items) != 1 {
+			logr.V(4).Info("found more than one cluster in namespace", "namespace", r.Namespace)
+			return reconcile.Result{}, nil
+		}
+
+		if !shouldIncludeZone(*vsphereDeploymentZone, &vsphereClusterList.Items[0]) {
+			logr.V(4).Info("deploymentzone not belonging to this cluster skip reconcile", "name", vsphereDeploymentZone.Name)
+			return reconcile.Result{}, nil
+		}
 	}
 
 	failureDomain := &infrav1.VSphereFailureDomain{}
