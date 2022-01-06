@@ -487,7 +487,7 @@ func (r machineReconciler) generateOverrideFunc(ctx *context.MachineContext) (fu
 
 		var vsphereFailureDomain infrav1.VSphereFailureDomain
 		if err := r.Client.Get(ctx, client.ObjectKey{Name: *failureDomainName}, &vsphereFailureDomain); err != nil {
-			r.Logger.Error(err, "unable to fetch failure domain", "name", *failureDomainName)
+			r.Logger.V(4).Info("unable to fetch failure domain", "name", *failureDomainName, "skip generating override")
 			return overrideWithFailureDomainFunc, false
 		}
 
