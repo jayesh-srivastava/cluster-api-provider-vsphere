@@ -34,14 +34,15 @@ import (
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
+	"github.com/vmware/govmomi/vim25/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/constants"
 )
 
-var sessionCache = map[string]Session{}
-var sessionMU sync.Mutex
+var sessionCache sync.Map
+
 
 // Session is a vSphere session with a configured Finder.
 type Session struct {
@@ -105,25 +106,37 @@ func (p *Params) WithFeatures(feature Feature) *Params {
 // already exist.
 func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 	logger := ctrl.LoggerFrom(ctx).WithName("session")
-	sessionMU.Lock()
-	defer sessionMU.Unlock()
 
 	sessionKey := params.server + params.userinfo.Username() + params.datacenter
-	if cachedSession, ok := sessionCache[sessionKey]; ok {
+	if cachedSession, ok := sessionCache.Load(sessionKey); ok {
+		s := cachedSession.(*Session)
 		logger = logger.WithValues("server", params.server, "datacenter", params.datacenter)
-		// if keepalive is enabled we depend upon roundtripper to reestablish the connection
-		// and remove the key if it could not
-		if params.feature.EnableKeepAlive {
-			return &cachedSession, nil
+
+		vimSessionActive, err := s.SessionManager.SessionIsActive(ctx)
+		if err != nil {
+			if soap.IsSoapFault(err) {
+				switch soap.ToSoapFault(err).VimFault().(type) {
+				case types.NotAuthenticated:
+				default:
+					return nil, err
+				}
+			} else {
+				return nil, err
+			}
 		}
-		var err error
-		if ok, err = cachedSession.SessionManager.SessionIsActive(ctx); ok {
+
+		tagManagerSession, err := s.TagManager.Session(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if vimSessionActive && tagManagerSession != nil {
 			logger.V(2).Info("found active cached vSphere client session")
-			return &cachedSession, nil
+			return s, nil
 		}
-		logger.V(2).Error(err, "error checking if session is active")
 	}
 
+	clearCache(logger, sessionKey)
 	soapURL, err := soap.ParseURL(params.server)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error parsing vSphere URL %q", params.server)
@@ -160,7 +173,7 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 		session.Finder.SetDatacenter(dc)
 	}
 	// Cache the session.
-	sessionCache[sessionKey] = session
+	sessionCache.Store(sessionKey, &session)
 
 	logger.V(2).Info("cached vSphere client session", "server", params.server, "datacenter", params.datacenter)
 
@@ -195,7 +208,7 @@ func newClient(ctx context.Context, logger logr.Logger, sessionKey string, url *
 			_, err := methods.GetCurrentTime(ctx, tripper)
 			if err != nil {
 				logger.Error(err, "failed to keep alive govmomi client")
-				clearCache(sessionKey)
+				clearCache(logger, sessionKey)
 			}
 			return err
 		})
@@ -208,10 +221,36 @@ func newClient(ctx context.Context, logger logr.Logger, sessionKey string, url *
 	return c, nil
 }
 
-func clearCache(sessionKey string) {
-	sessionMU.Lock()
-	defer sessionMU.Unlock()
-	delete(sessionCache, sessionKey)
+func clearCache(logger logr.Logger, sessionKey string) {
+	if cachedSession, ok := sessionCache.Load(sessionKey); ok {
+		s := cachedSession.(*Session)
+		session, err := s.TagManager.Session(context.Background())
+		if err != nil {
+			logger.Error(err, "unable to get tag manager session")
+		}
+		if session != nil {
+			logger.Info("found active tag manager session, logging out")
+			err := s.TagManager.Logout(context.Background())
+			if err != nil {
+				logger.Error(err, "unable to logout tag manager session")
+			}
+		}
+
+		vimSessionActive, err := s.SessionManager.SessionIsActive(context.Background())
+		if err != nil {
+			logger.Error(err, "unable to get vim client session")
+		} else {
+			if vimSessionActive {
+				logger.Info("found active vim session, logging out")
+				err := s.SessionManager.Logout(context.Background())
+				if err != nil {
+					logger.Error(err, "unable to logout vim session")
+				}
+			}
+		}
+	}
+
+	sessionCache.Delete(sessionKey)
 }
 
 // newManager creates a Manager that encompasses the REST Client for the VSphere tagging API
