@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"testing"
 	"time"
 
@@ -13,9 +12,10 @@ import (
 	"github.com/onsi/gomega/gbytes"
 	"github.com/vmware/govmomi/simulator"
 	"k8s.io/klog/v2/klogr"
+	"sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/session"
 	"sigs.k8s.io/cluster-api-provider-vsphere/test/helpers"
-	log2 "sigs.k8s.io/controller-runtime/pkg/log"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	// run init func to register the tagging API endpoints
 	_ "github.com/vmware/govmomi/vapi/simulator"
@@ -24,11 +24,7 @@ import (
 func TestGetSession(t *testing.T) {
 	g := gomega.NewWithT(t)
 	log := klogr.New()
-
-	log2.SetLogger(log)
-
-	os.Setenv("GOVC_BIN_PATH", "/usr/local/bin/govc")
-	simulator.SessionIdleTimeout = 1 * time.Second
+	ctrllog.SetLogger(log)
 
 	model := simulator.VPX()
 	model.Cluster = 2
@@ -42,7 +38,7 @@ func TestGetSession(t *testing.T) {
 
 	params := session.NewParams().
 		WithServer(simr.ServerURL().Host).
-		WithUserInfo(simr.Username(), simr.Password())
+		WithUserInfo(simr.Username(), simr.Password()).WithDatacenter("*")
 
 	// Get first session
 	s, err := session.GetOrCreate(context.Background(), params)
@@ -52,6 +48,7 @@ func TestGetSession(t *testing.T) {
 
 	// Get session key
 	sessionInfo, err := s.SessionManager.UserSession(context.Background())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	firstSession := sessionInfo.Key
 
@@ -65,19 +62,19 @@ func TestGetSession(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(s).ToNot(gomega.BeNil())
 
-
 	// Get session info, session key should be different from
 	// last session
 	sessionInfo, err = s.SessionManager.UserSession(context.Background())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo.Key).ToNot(gomega.BeEquivalentTo(firstSession))
 	AssetSessionCountEqualTo(g, simr, 1)
 }
 
-func sessionCount(stdout *gbytes.Buffer) (int, error) {
+func sessionCount(stdout io.Reader) (int, error) {
 	buf := make([]byte, 1024)
 	count := 0
-	lineSep := []byte("infrastructure.cluster.x-k8s.io/v1alpha4")
+	lineSep := []byte(v1beta1.GroupVersion.String())
 
 	for {
 		c, err := stdout.Read(buf)
@@ -102,11 +99,7 @@ func AssetSessionCountEqualTo(g *gomega.WithT, simr *helpers.Simulator, count in
 func TestGetSessionWithKeepAlive(t *testing.T) {
 	g := gomega.NewWithT(t)
 	log := klogr.New()
-
-	log2.SetLogger(log)
-
-	os.Setenv("GOVC_BIN_PATH", "/usr/local/bin/govc")
-	simulator.SessionIdleTimeout = 1 * time.Second
+	ctrllog.SetLogger(log)
 
 	model := simulator.VPX()
 	model.Cluster = 2
@@ -121,8 +114,8 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 	params := session.NewParams().
 		WithServer(simr.ServerURL().Host).
 		WithUserInfo(simr.Username(), simr.Password()).
-		WithFeatures(session.Feature{EnableKeepAlive: true})
-
+		WithFeatures(session.Feature{EnableKeepAlive: true}).
+		WithDatacenter("*")
 
 	// Get first Session
 	s, err := session.GetOrCreate(context.Background(), params)
@@ -132,6 +125,7 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 
 	// Get session key
 	sessionInfo, err := s.SessionManager.UserSession(context.Background())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	firstSession := sessionInfo.Key
 
@@ -142,14 +136,13 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(s).ToNot(gomega.BeNil())
 	sessionInfo, err = s.SessionManager.UserSession(context.Background())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	g.Expect(sessionInfo.Key).To(gomega.BeEquivalentTo(firstSession))
 	AssetSessionCountEqualTo(g, simr, 1)
 
-
 	// Try to remove vim session
-	s.Logout(context.Background())
-
+	g.Expect(s.Logout(context.Background())).To(gomega.Succeed())
 
 	// after logging out old session must be deleted and
 	// we must get a new different session
@@ -158,6 +151,7 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(s).ToNot(gomega.BeNil())
 	sessionInfo, err = s.SessionManager.UserSession(context.Background())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	g.Expect(sessionInfo.Key).ToNot(gomega.BeEquivalentTo(firstSession))
 	AssetSessionCountEqualTo(g, simr, 1)
@@ -166,12 +160,9 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 func TestGetSessionWithKeepAliveTagManagerLogout(t *testing.T) {
 	g := gomega.NewWithT(t)
 	log := klogr.New()
+	ctrllog.SetLogger(log)
 
-	log2.SetLogger(log)
-
-	os.Setenv("GOVC_BIN_PATH", "/usr/local/bin/govc")
 	simulator.SessionIdleTimeout = 1 * time.Second
-
 	model := simulator.VPX()
 	model.Cluster = 2
 
@@ -185,14 +176,15 @@ func TestGetSessionWithKeepAliveTagManagerLogout(t *testing.T) {
 	params := session.NewParams().
 		WithServer(simr.ServerURL().Host).
 		WithUserInfo(simr.Username(), simr.Password()).
-		WithFeatures(session.Feature{EnableKeepAlive: true, KeepAliveDuration: 2 * time.Second})
-
+		WithFeatures(session.Feature{EnableKeepAlive: true, KeepAliveDuration: 2 * time.Second}).WithDatacenter("*")
 
 	// Get first session
 	s, err := session.GetOrCreate(context.Background(), params)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(s).ToNot(gomega.BeNil())
+	AssetSessionCountEqualTo(g, simr, 1)
 	sessionInfo, err := s.SessionManager.UserSession(context.Background())
+	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	sessionKey := sessionInfo.Key
 	AssetSessionCountEqualTo(g, simr, 1)
@@ -215,12 +207,10 @@ func TestGetSessionWithKeepAliveTagManagerLogout(t *testing.T) {
 	sessionKey = sessionInfo.Key
 	AssetSessionCountEqualTo(g, simr, 1)
 
-
 	// wait enough time so the session is expired
 	// as KeepAliveDuration 2 seconds > SessionIdleTimeout 1 second
 	time.Sleep(5 * time.Second)
 	AssetSessionCountEqualTo(g, simr, 0)
-
 
 	s, err = session.GetOrCreate(context.Background(), params)
 	g.Expect(err).ToNot(gomega.HaveOccurred())

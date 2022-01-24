@@ -43,7 +43,6 @@ import (
 
 var sessionCache sync.Map
 
-
 // Session is a vSphere session with a configured Finder.
 type Session struct {
 	*govmomi.Client
@@ -239,17 +238,14 @@ func clearCache(logger logr.Logger, sessionKey string) {
 		vimSessionActive, err := s.SessionManager.SessionIsActive(context.Background())
 		if err != nil {
 			logger.Error(err, "unable to get vim client session")
-		} else {
-			if vimSessionActive {
-				logger.Info("found active vim session, logging out")
-				err := s.SessionManager.Logout(context.Background())
-				if err != nil {
-					logger.Error(err, "unable to logout vim session")
-				}
+		} else if vimSessionActive {
+			logger.Info("found active vim session, logging out")
+			err := s.SessionManager.Logout(context.Background())
+			if err != nil {
+				logger.Error(err, "unable to logout vim session")
 			}
 		}
 	}
-
 	sessionCache.Delete(sessionKey)
 }
 
@@ -267,7 +263,7 @@ func newManager(ctx context.Context, logger logr.Logger, sessionKey string, clie
 			}
 
 			logger.Info("rest client session expired, clearing cache")
-			clearCache(sessionKey)
+			clearCache(logger, sessionKey)
 			return nil
 		})
 	}
