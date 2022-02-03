@@ -249,7 +249,7 @@ func clearCache(logger logr.Logger, sessionKey string) {
 	sessionCache.Delete(sessionKey)
 }
 
-// newManager creates a Manager that encompasses the REST Client for the VSphere tagging API
+// newManager creates a Manager that encompasses the REST Client for the VSphere tagging API.
 func newManager(ctx context.Context, logger logr.Logger, sessionKey string, client *vim25.Client, user *url.Userinfo, feature Feature) (*tags.Manager, error) {
 	rc := rest.NewClient(client)
 	if feature.EnableKeepAlive {
@@ -267,8 +267,7 @@ func newManager(ctx context.Context, logger logr.Logger, sessionKey string, clie
 			return nil
 		})
 	}
-	err := rc.Login(ctx, user)
-	if err != nil {
+	if err := rc.Login(ctx, user); err != nil {
 		return nil, err
 	}
 	return tags.NewManager(rc), nil

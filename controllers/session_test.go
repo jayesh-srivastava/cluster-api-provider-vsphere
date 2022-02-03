@@ -11,13 +11,13 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/vmware/govmomi/simulator"
-	// run init func to register the tagging API endpoints
 	_ "github.com/vmware/govmomi/vapi/simulator"
 	"k8s.io/klog/v2/klogr"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
+
 	"sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/session"
 	"sigs.k8s.io/cluster-api-provider-vsphere/test/helpers"
-	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func TestGetSession(t *testing.T) {
