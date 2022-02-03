@@ -43,7 +43,7 @@ func TestGetSession(t *testing.T) {
 	s, err := session.GetOrCreate(context.Background(), params)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(s).ToNot(gomega.BeNil())
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 
 	// Get session key
 	sessionInfo, err := s.SessionManager.UserSession(context.Background())
@@ -54,7 +54,7 @@ func TestGetSession(t *testing.T) {
 	// remove session expect no session
 	g.Expect(s.TagManager.Logout(context.Background())).To(gomega.Succeed())
 	g.Expect(simr.Run(fmt.Sprintf("session.rm %s", firstSession))).To(gomega.Succeed())
-	AssetSessionCountEqualTo(g, simr, 0)
+	AssertSessionCountEqualTo(g, simr, 0)
 
 	// request sesion again should be a new and different session
 	s, err = session.GetOrCreate(context.Background(), params)
@@ -67,7 +67,7 @@ func TestGetSession(t *testing.T) {
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo.Key).ToNot(gomega.BeEquivalentTo(firstSession))
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 }
 
 func sessionCount(stdout io.Reader) (int, error) {
@@ -89,7 +89,7 @@ func sessionCount(stdout io.Reader) (int, error) {
 	}
 }
 
-func AssetSessionCountEqualTo(g *gomega.WithT, simr *helpers.Simulator, count int) {
+func AssertSessionCountEqualTo(g *gomega.WithT, simr *helpers.Simulator, count int) {
 	stdout := gbytes.NewBuffer()
 	g.Expect(simr.Run("session.ls", stdout)).To(gomega.Succeed())
 	g.Expect(sessionCount(stdout)).To(gomega.BeNumerically("==", count))
@@ -120,7 +120,7 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 	s, err := session.GetOrCreate(context.Background(), params)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(s).ToNot(gomega.BeNil())
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 
 	// Get session key
 	sessionInfo, err := s.SessionManager.UserSession(context.Background())
@@ -138,7 +138,7 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	g.Expect(sessionInfo.Key).To(gomega.BeEquivalentTo(firstSession))
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 
 	// Try to remove vim session
 	g.Expect(s.Logout(context.Background())).To(gomega.Succeed())
@@ -153,7 +153,7 @@ func TestGetSessionWithKeepAlive(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	g.Expect(sessionInfo.Key).ToNot(gomega.BeEquivalentTo(firstSession))
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 }
 
 func TestGetSessionWithKeepAliveTagManagerLogout(t *testing.T) {
@@ -181,17 +181,17 @@ func TestGetSessionWithKeepAliveTagManagerLogout(t *testing.T) {
 	s, err := session.GetOrCreate(context.Background(), params)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(s).ToNot(gomega.BeNil())
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 	sessionInfo, err := s.SessionManager.UserSession(context.Background())
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	sessionKey := sessionInfo.Key
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 
 	// wait enough time so the session is expired
 	// as KeepAliveDuration 2 seconds > SessionIdleTimeout 1 second
 	time.Sleep(5 * time.Second)
-	AssetSessionCountEqualTo(g, simr, 0)
+	AssertSessionCountEqualTo(g, simr, 0)
 
 	// Get session again
 	// as session is deleted we must get new session
@@ -204,12 +204,12 @@ func TestGetSessionWithKeepAliveTagManagerLogout(t *testing.T) {
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	g.Expect(sessionInfo.Key).ToNot(gomega.BeEquivalentTo(sessionKey))
 	sessionKey = sessionInfo.Key
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 
 	// wait enough time so the session is expired
 	// as KeepAliveDuration 2 seconds > SessionIdleTimeout 1 second
 	time.Sleep(5 * time.Second)
-	AssetSessionCountEqualTo(g, simr, 0)
+	AssertSessionCountEqualTo(g, simr, 0)
 
 	s, err = session.GetOrCreate(context.Background(), params)
 	g.Expect(err).ToNot(gomega.HaveOccurred())
@@ -218,5 +218,5 @@ func TestGetSessionWithKeepAliveTagManagerLogout(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(sessionInfo).ToNot(gomega.BeNil())
 	g.Expect(sessionInfo.Key).ToNot(gomega.BeEquivalentTo(sessionKey))
-	AssetSessionCountEqualTo(g, simr, 1)
+	AssertSessionCountEqualTo(g, simr, 1)
 }
