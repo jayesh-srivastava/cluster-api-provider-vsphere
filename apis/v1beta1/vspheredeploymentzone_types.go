@@ -14,11 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:godot
 package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+)
+
+const (
+	// DeploymentZoneFinalizer allows ReconcileVSphereDeploymentZone to
+	// check for dependents associated with VSphereDeploymentZone
+	// before removing it from the API Server.
+	DeploymentZoneFinalizer = "vspheredeploymentzone.infrastructure.cluster.x-k8s.io"
 )
 
 // VSphereDeploymentZoneSpec defines the desired state of VSphereDeploymentZone

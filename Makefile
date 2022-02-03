@@ -55,7 +55,8 @@ GOLANGCI_LINT := $(TOOLS_BIN_DIR)/golangci-lint
 GOVC := $(TOOLS_BIN_DIR)/govc
 KIND := $(TOOLS_BIN_DIR)/kind
 KUSTOMIZE := $(TOOLS_BIN_DIR)/kustomize
-TOOLING_BINARIES := $(CONTROLLER_GEN) $(CONVERSION_GEN) $(GINKGO) $(GOLANGCI_LINT) $(GOVC) $(KIND) $(KUSTOMIZE)
+CONVERSION_VERIFIER := $(abspath $(TOOLS_BIN_DIR)/conversion-verifier)
+TOOLING_BINARIES := $(CONTROLLER_GEN) $(CONVERSION_GEN) $(GINKGO) $(GOLANGCI_LINT) $(GOVC) $(KIND) $(KUSTOMIZE) $(CONVERSION_VERIFIER)
 ARTIFACTS_PATH := $(ROOT_DIR)/_artifacts
 
 # Set --output-base for conversion-gen if we are not within GOPATH
@@ -135,26 +136,26 @@ test-integration: e2e-image
 test-integration: $(GINKGO) $(KUSTOMIZE) $(KIND)
 	time $(GINKGO) -v ./test/integration -- --config="$(INTEGRATION_CONF_FILE)" --artifacts-folder="$(ARTIFACTS_PATH)"
 
+GINKGO_FOCUS ?=
+
 .PHONY: e2e
 e2e: e2e-image e2e-templates
 e2e: $(GINKGO) $(KUSTOMIZE) $(KIND) $(GOVC) ## Run e2e tests
-	@echo PATH=$(PATH)
+	@echo PATH="$(PATH)"
 	@echo
 	@echo Contents of $(TOOLS_BIN_DIR):
 	@ls $(TOOLS_BIN_DIR)
 	@echo
-
-	time $(GINKGO) -v -skip="ClusterAPI Upgrade Tests" ./test/e2e -- --e2e.config="$(E2E_CONF_FILE)"
+	time $(GINKGO) -v -skip="ClusterAPI Upgrade Tests" ./test/e2e -- --e2e.config="$(E2E_CONF_FILE)" --e2e.artifacts-folder="$(ARTIFACTS_PATH)"
 
 .PHONY: e2e-upgrade
 e2e-upgrade: e2e-image e2e-templates
-e2e-upgrade: $(GINKGO) $(KUSTOMIZE) $(KIND) $(GOVC) ## Run e2e tests
-	@echo PATH=$(PATH)
+e2e-upgrade: $(GINKGO) $(KUSTOMIZE) $(KIND) $(GOVC) ## Run only upgrade e2e tests
+	@echo PATH="$(PATH)"
 	@echo
 	@echo Contents of $(TOOLS_BIN_DIR):
 	@ls $(TOOLS_BIN_DIR)
 	@echo
-
 	time $(GINKGO) -v -focus="ClusterAPI Upgrade Tests" ./test/e2e -- --e2e.config="$(E2E_CONF_FILE)"
 ## --------------------------------------
 ## Binaries
@@ -308,6 +309,10 @@ manifests:  $(STAGE)-version-check $(STAGE)-flavors $(MANIFEST_DIR) $(BUILD_DIR)
 	"$(KUSTOMIZE)" build $(BUILD_DIR)/config/default > $(MANIFEST_DIR)/infrastructure-components.yaml
 	"$(KUSTOMIZE)" build $(BUILD_DIR)/config/supervisor > $(MANIFEST_DIR)/infrastructure-components-supervisor.yaml
 
+.PHONY: verify-conversions
+verify-conversions: $(CONVERSION_VERIFIER)  ## Verifies expected API conversion are in place
+	$(CONVERSION_VERIFIER)
+
 ## --------------------------------------
 ## Cleanup / Verification
 ## --------------------------------------
@@ -373,6 +378,24 @@ verify-boilerplate: ## Verifies all sources have appropriate boilerplate
 .PHONY: verify-crds
 verify-crds: ## Verifies the committed CRDs are up-to-date
 	./hack/verify-crds.sh
+
+.PHONY: verify-gen
+verify-gen: generate  ## Verfiy go generated files are up to date
+	@if !(git diff --quiet HEAD); then \
+		git diff; \
+		echo "generated files are out of date, run make generate"; exit 1; \
+	fi
+
+.PHONY: verify-modules
+verify-modules: modules  ## Verify go modules are up to date
+	@if !(git diff --quiet HEAD -- go.sum go.mod $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/go.sum); then \
+		git diff; \
+		echo "go module files are out of date"; exit 1; \
+	fi
+	@if (find . -name 'go.mod' | xargs -n1 grep -q -i 'k8s.io/client-go.*+incompatible'); then \
+		find . -name "go.mod" -exec grep -i 'k8s.io/client-go.*+incompatible' {} \; -print; \
+		echo "go module contains an incompatible client-go version"; exit 1; \
+	fi
 
 ## --------------------------------------
 ## Check

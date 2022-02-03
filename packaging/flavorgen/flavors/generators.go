@@ -20,15 +20,16 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
-	infrav1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
-	"sigs.k8s.io/cluster-api-provider-vsphere/packaging/flavorgen/flavors/env"
-	"sigs.k8s.io/cluster-api-provider-vsphere/packaging/flavorgen/flavors/util"
-	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/identity"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	bootstrapv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1"
 	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
 	addonsv1 "sigs.k8s.io/cluster-api/exp/addons/api/v1beta1"
 	"sigs.k8s.io/yaml"
+
+	infrav1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
+	"sigs.k8s.io/cluster-api-provider-vsphere/packaging/flavorgen/flavors/env"
+	"sigs.k8s.io/cluster-api-provider-vsphere/packaging/flavorgen/flavors/util"
+	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/identity"
 )
 
 func newVSphereCluster() infrav1.VSphereCluster {
@@ -250,17 +251,66 @@ func kubeVIPPod() string {
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:  "kube-vip",
-					Image: "ghcr.io/kube-vip/kube-vip:v0.3.5",
-					Args: []string{
-						"start",
-					},
+					Name:            "kube-vip",
+					Image:           "ghcr.io/kube-vip/kube-vip:v0.4.0",
 					ImagePullPolicy: corev1.PullIfNotPresent,
+					Args: []string{
+						"manager",
+					},
+					Env: []corev1.EnvVar{
+						{
+							// Enables kube-vip control-plane functionality
+							Name:  "cp_enable",
+							Value: "true",
+						},
+						{
+							// Interface that the vip should bind to
+							Name:  "vip_interface",
+							Value: env.VipNetworkInterfaceVar,
+						},
+						{
+							// VIP IP address
+							// 'vip_address' was replaced by 'address'
+							Name:  "address",
+							Value: env.ControlPlaneEndpointVar,
+						},
+						{
+							// VIP TCP port
+							Name:  "port",
+							Value: "6443",
+						},
+						{
+							// Enables ARP brodcasts from Leader (requires L2 connectivity)
+							Name:  "vip_arp",
+							Value: "true",
+						},
+						{
+							// Kubernetes algorithm to be used.
+							Name:  "vip_leaderelection",
+							Value: "true",
+						},
+						{
+							// Seconds a lease is held for
+							Name:  "vip_leaseduration",
+							Value: "15",
+						},
+						{
+							// Seconds a leader can attempt to renew the lease
+							Name:  "vip_renewdeadline",
+							Value: "10",
+						},
+						{
+							// Number of times the leader will hold the lease for
+							Name:  "vip_retryperiod",
+							Value: "2",
+						},
+					},
 					SecurityContext: &corev1.SecurityContext{
 						Capabilities: &corev1.Capabilities{
 							Add: []corev1.Capability{
 								"NET_ADMIN",
 								"SYS_TIME",
+								"NET_RAW",
 							},
 						},
 					},
@@ -270,40 +320,17 @@ func kubeVIPPod() string {
 							Name:      "kubeconfig",
 						},
 					},
-					Env: []corev1.EnvVar{
-						{
-							Name:  "vip_arp",
-							Value: "true",
-						},
-						{
-							Name:  "vip_leaderelection",
-							Value: "true",
-						},
-						{
-							Name:  "vip_address",
-							Value: env.ControlPlaneEndpointVar,
-						},
-						{
-							// this is hardcoded since we use eth0 as a network interface for all of our machines in this template
-							Name:  "vip_interface",
-							Value: "eth0",
-						},
-						{
-							Name:  "vip_leaseduration",
-							Value: "15",
-						},
-						{
-							Name:  "vip_renewdeadline",
-							Value: "10",
-						},
-						{
-							Name:  "vip_retryperiod",
-							Value: "2",
-						},
-					},
 				},
 			},
 			HostNetwork: true,
+			HostAliases: []corev1.HostAlias{
+				{
+					IP: "127.0.0.1",
+					Hostnames: []string{
+						"kubernetes",
+					},
+				},
+			},
 			Volumes: []corev1.Volume{
 				{
 					Name: "kubeconfig",
@@ -323,6 +350,7 @@ func kubeVIPPod() string {
 	}
 	return string(podBytes)
 }
+
 func newClusterResourceSet(cluster clusterv1.Cluster) addonsv1.ClusterResourceSet {
 	crs := addonsv1.ClusterResourceSet{
 		TypeMeta: metav1.TypeMeta{
@@ -407,7 +435,6 @@ func newKubeVIPFiles() []bootstrapv1.File {
 			Content: kubeVIPPod(),
 		},
 	}
-
 }
 
 func newKubeadmControlplane(replicas int, infraTemplate infrav1.VSphereMachineTemplate, files []bootstrapv1.File) controlplanev1.KubeadmControlPlane {

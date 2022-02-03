@@ -36,40 +36,47 @@ import (
 
 // This object is used for unit tests setup only
 // Integration tests will be run using the existing envTest setup.
-var serviceAccountProviderTestsuite = builder.NewTestSuiteForController(AddServiceAccountProviderControllerToManager, newServiceAccountReconciler)
+var ServiceAccountProviderTestsuite = builder.NewTestSuiteForController(NewServiceAccountReconciler)
 
 const (
-	testNS                     = "test-namespace"
+	testNS                     = "test-pvcsi-system"
 	testProviderSvcAccountName = "test-pvcsi"
-	testTargetNS               = "test-pvcsi-system"
-	testTargetSecret           = "test-pvcsi-secret" // nolint:gosec
-	testSvcAccountName         = testProviderSvcAccountName
-	testSvcAccountSecretName   = testSvcAccountName + "-token-abcdef"
-	testRoleName               = testProviderSvcAccountName
-	testRoleBindingName        = testProviderSvcAccountName
-	testSystemSvcAcctNs        = "test-system-svc-acct-namespace"
-	testSystemSvcAcctCM        = "test-system-svc-acct-cm"
+
+	testTargetNS             = "test-pvcsi-system"
+	testTargetSecret         = "test-pvcsi-secret" // nolint:gosec
+	testSvcAccountName       = testProviderSvcAccountName
+	testSvcAccountSecretName = testProviderSvcAccountName + "-token-abcdef"
+	testRoleName             = testProviderSvcAccountName
+	testRoleBindingName      = testProviderSvcAccountName
+	testSystemSvcAcctNs      = "test-system-svc-acct-namespace"
+	testSystemSvcAcctCM      = "test-system-svc-acct-cm"
 
 	testSecretToken = "ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNklp" // nolint:gosec
 )
 
-var (
-	truePointer = true
-)
+var truePointer = true
 
-func createTargetSecretWithInvalidToken(ctx *builder.UnitTestContextForController, guestClient client.Client) { // nolint
-	secret := getTestTargetSecretWithInvalidToken()
+func createTestResource(ctx goctx.Context, ctrlClient client.Client, obj client.Object) {
+	Expect(ctrlClient.Create(ctx, obj)).To(Succeed())
+}
+
+func deleteTestResource(ctx goctx.Context, ctrlClient client.Client, obj client.Object) {
+	Expect(ctrlClient.Delete(ctx, obj)).To(Succeed())
+}
+
+func createTargetSecretWithInvalidToken(ctx goctx.Context, guestClient client.Client, namespace string) {
+	secret := getTestTargetSecretWithInvalidToken(namespace)
 	Expect(guestClient.Create(ctx, secret)).To(Succeed())
 }
 
-func assertEventuallyExistsInNamespace(ctx goctx.Context, c client.Client, namespace, name string, obj client.Object) { // nolint
+func assertEventuallyExistsInNamespace(ctx goctx.Context, c client.Client, namespace, name string, obj client.Object) {
 	EventuallyWithOffset(2, func() error {
 		key := client.ObjectKey{Namespace: namespace, Name: name}
 		return c.Get(ctx, key, obj)
 	}).Should(Succeed())
 }
 
-func assertNoEntities(ctx *builder.UnitTestContextForController, ctrlClient client.Client, namespace string) { // nolint
+func assertNoEntities(ctx goctx.Context, ctrlClient client.Client, namespace string) {
 	Consistently(func() int {
 		var serviceAccountList corev1.ServiceAccountList
 		err := ctrlClient.List(ctx, &serviceAccountList, client.InNamespace(namespace))
@@ -92,7 +99,7 @@ func assertNoEntities(ctx *builder.UnitTestContextForController, ctrlClient clie
 	}, time.Second*3).Should(Equal(0))
 }
 
-func assertServiceAccountAndUpdateSecret(ctx *builder.UnitTestContextForController, ctrlClient client.Client, namespace, name string) {
+func assertServiceAccountAndUpdateSecret(ctx goctx.Context, ctrlClient client.Client, namespace, name string) {
 	svcAccount := &corev1.ServiceAccount{}
 	assertEventuallyExistsInNamespace(ctx, ctrlClient, namespace, name, svcAccount)
 	// Update the service account with a prototype secret
@@ -106,7 +113,7 @@ func assertServiceAccountAndUpdateSecret(ctx *builder.UnitTestContextForControll
 	Expect(ctrlClient.Update(ctx, svcAccount)).To(Succeed())
 }
 
-func assertTargetSecret(ctx *builder.UnitTestContextForController, guestClient client.Client, namespace, name string) {
+func assertTargetSecret(ctx goctx.Context, guestClient client.Client, namespace, name string) { // nolint
 	secret := &corev1.Secret{}
 	assertEventuallyExistsInNamespace(ctx, guestClient, namespace, name, secret)
 	EventuallyWithOffset(2, func() []byte {
@@ -116,7 +123,7 @@ func assertTargetSecret(ctx *builder.UnitTestContextForController, guestClient c
 	}).Should(Equal([]byte(testSecretToken)))
 }
 
-func assertTargetNamespace(ctx *builder.UnitTestContextForController, guestClient client.Client, namespaceName string, isExist bool) { // nolint
+func assertTargetNamespace(ctx *builder.UnitTestContextForController, guestClient client.Client, namespaceName string, isExist bool) {
 	namespace := &corev1.Namespace{}
 	err := guestClient.Get(ctx, client.ObjectKey{Name: namespaceName}, namespace)
 	if isExist {
@@ -126,7 +133,7 @@ func assertTargetNamespace(ctx *builder.UnitTestContextForController, guestClien
 	}
 }
 
-func assertRoleWithGetPVC(ctx *builder.UnitTestContextForController, ctrlClient client.Client, namespace, name string) { // nolint
+func assertRoleWithGetPVC(ctx *builder.UnitTestContextForController, ctrlClient client.Client, namespace, name string) {
 	var roleList rbacv1.RoleList
 	opts := &client.ListOptions{
 		Namespace: namespace,
@@ -144,7 +151,7 @@ func assertRoleWithGetPVC(ctx *builder.UnitTestContextForController, ctrlClient 
 	}))
 }
 
-func assertRoleBinding(_ *builder.UnitTestContextForController, ctrlClient client.Client, namespace, name string) { // nolint
+func assertRoleBinding(_ *builder.UnitTestContextForController, ctrlClient client.Client, namespace, name string) {
 	var roleBindingList rbacv1.RoleBindingList
 	opts := &client.ListOptions{
 		Namespace: namespace,
@@ -175,17 +182,17 @@ func assertProviderServiceAccountsCondition(vCluster *vmwarev1.VSphereCluster, s
 	}
 }
 
-func getTestTargetSecretWithInvalidToken() *corev1.Secret {
-	secret := getTestTargetSecretWithValidToken()
+func getTestTargetSecretWithInvalidToken(namespace string) *corev1.Secret {
+	secret := getTestTargetSecretWithValidToken(namespace)
 	secret.Data["token"] = []byte("invalid-token")
 	return secret
 }
 
-func getTestTargetSecretWithValidToken() *corev1.Secret {
+func getTestTargetSecretWithValidToken(namespace string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      testTargetSecret,
-			Namespace: testTargetNS,
+			Namespace: namespace,
 		},
 		Data: map[string][]byte{
 			"token": []byte(testSecretToken),
@@ -209,12 +216,14 @@ func getTestProviderServiceAccount(namespace, name string, vSphereCluster *vmwar
 			},
 			TargetNamespace:  testTargetNS,
 			TargetSecretName: testTargetSecret,
-		}}
+		},
+	}
+
 	if vSphereCluster != nil {
 		pSvcAccount.OwnerReferences = []metav1.OwnerReference{
 			{
 				APIVersion: vmwarev1.GroupVersion.String(),
-				Kind:       "TanzuKubernetesCluster",
+				Kind:       "VSphereCluster",
 				Name:       vSphereCluster.Name,
 				UID:        vSphereCluster.UID,
 				Controller: &truePointer,
@@ -283,7 +292,7 @@ func getTestRoleBindingWithInvalidRoleRef(namespace, name string) *rbacv1.RoleBi
 			{
 				Kind:      "ServiceAccount",
 				APIGroup:  "",
-				Name:      testSvcAccountName,
+				Name:      testProviderSvcAccountName,
 				Namespace: namespace},
 		},
 	}

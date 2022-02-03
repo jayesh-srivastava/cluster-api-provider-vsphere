@@ -20,9 +20,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	bootstrapapi "k8s.io/cluster-bootstrap/token/api"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	vmwarev1b1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/vmware/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/builder"
@@ -33,7 +33,7 @@ var _ = Describe("ServiceDiscoveryReconciler ReconcileNormal", serviceDiscoveryU
 func serviceDiscoveryUnitTestsReconcileNormal() {
 	var (
 		ctx         *builder.UnitTestContextForController
-		initObjects []runtime.Object
+		initObjects []client.Object
 	)
 	JustBeforeEach(func() {
 		ctx = serviceDiscoveryTestSuite.NewUnitTestContextForController(initObjects...)
@@ -51,9 +51,10 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When VIP is available", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestSupervisorLBServiceWithIPStatus(),
 			}
+			initObjects = append(initObjects, newTestHeadlessSvcEndpoints()...)
 		})
 		It("Should reconcile headless svc", func() {
 			By("creating a service and endpoints using the VIP in the guest cluster")
@@ -68,7 +69,7 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When FIP is available", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestConfigMapWithHost(testSupervisorAPIServerFIP)}
 		})
 		It("Should reconcile headless svc", func() {
@@ -79,9 +80,10 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When VIP and FIP are available", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestSupervisorLBServiceWithIPStatus(),
-				newTestConfigMapWithHost(testSupervisorAPIServerFIP)}
+				newTestConfigMapWithHost(testSupervisorAPIServerFIP),
+			}
 		})
 		It("Should reconcile headless svc", func() {
 			By("creating a service and endpoints using the VIP in the guest cluster")
@@ -91,7 +93,7 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When VIP is an hostname", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestSupervisorLBServiceWithHostnameStatus()}
 		})
 		It("Should reconcile headless svc", func() {
@@ -102,7 +104,7 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When FIP is an hostname", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestConfigMapWithHost(testSupervisorAPIServerFIPHostName),
 			}
 		})
@@ -114,7 +116,7 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When FIP is an empty hostname", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestConfigMapWithHost(""),
 			}
 		})
@@ -127,7 +129,7 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When FIP is an invalid host", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestConfigMapWithHost("host^name"),
 			}
 		})
@@ -140,7 +142,7 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When FIP config map has invalid kubeconfig data", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestConfigMapWithData(
 					map[string]string{
 						bootstrapapi.KubeConfigKey: "invalid-kubeconfig-data",
@@ -156,7 +158,7 @@ func serviceDiscoveryUnitTestsReconcileNormal() {
 	})
 	Context("When FIP config map has invalid kubeconfig key", func() {
 		BeforeEach(func() {
-			initObjects = []runtime.Object{
+			initObjects = []client.Object{
 				newTestConfigMapWithData(
 					map[string]string{
 						"invalid-key": "invalid-kubeconfig-data",

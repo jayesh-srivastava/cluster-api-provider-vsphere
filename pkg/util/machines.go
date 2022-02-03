@@ -19,11 +19,10 @@ package util
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"regexp"
 	"text/template"
-
-	vmwarev1b1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/vmware/v1beta1"
 
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infrav1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
+	vmwarev1b1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/vmware/v1beta1"
 )
 
 // GetMachinesInCluster gets a cluster's Machine resources.
@@ -41,7 +41,6 @@ func GetMachinesInCluster(
 	ctx context.Context,
 	controllerClient client.Client,
 	namespace, clusterName string) ([]*clusterv1.Machine, error) {
-
 	labels := map[string]string{clusterv1.ClusterLabelName: clusterName}
 	machineList := &clusterv1.MachineList{}
 
@@ -67,7 +66,6 @@ func GetVSphereMachinesInCluster(
 	ctx context.Context,
 	controllerClient client.Client,
 	namespace, clusterName string) ([]*infrav1.VSphereMachine, error) {
-
 	labels := map[string]string{clusterv1.ClusterLabelName: clusterName}
 	machineList := &infrav1.VSphereMachineList{}
 
@@ -91,7 +89,6 @@ func GetVSphereMachine(
 	ctx context.Context,
 	controllerClient client.Client,
 	namespace, machineName string) (*vmwarev1b1.VSphereMachine, error) {
-
 	machine := &vmwarev1b1.VSphereMachine{}
 	namespacedName := apitypes.NamespacedName{
 		Namespace: namespace,
@@ -103,7 +100,7 @@ func GetVSphereMachine(
 	return machine, nil
 }
 
-// GetVSphereClusterFromVSphereMachine gets the vmware.infrastructure.cluster.x-k8s.io.VSPhereCluster resource for the given VSphereMachine
+// GetVSphereClusterFromVSphereMachine gets the vmware.infrastructure.cluster.x-k8s.io.VSPhereCluster resource for the given VSphereMachine.
 func GetVSphereClusterFromVSphereMachine(ctx context.Context, c client.Client, machine *vmwarev1b1.VSphereMachine) (*vmwarev1b1.VSphereCluster, error) {
 	clusterName := machine.Labels[clusterv1.ClusterLabelName]
 	if clusterName == "" {
@@ -119,7 +116,7 @@ func GetVSphereClusterFromVSphereMachine(ctx context.Context, c client.Client, m
 	return cluster, err
 }
 
-// ErrNoMachineIPAddr indicates that no valid IP addresses were found in a machine context
+// ErrNoMachineIPAddr indicates that no valid IP addresses were found in a machine context.
 var ErrNoMachineIPAddr = errors.New("no IP addresses found for machine")
 
 // GetMachinePreferredIPAddress returns the preferred IP address for a
@@ -287,4 +284,26 @@ func ConvertUUIDToProviderID(uuid string) string {
 		return ""
 	}
 	return ProviderIDPrefix + uuid
+}
+
+// MachinesAsString constructs a string (with correct punctuations) to be
+// used in logging and error messages.
+func MachinesAsString(machines []*clusterv1.Machine) string {
+	var message string
+	count := 1
+	for _, m := range machines {
+		if count == 1 {
+			message = fmt.Sprintf("%s/%s", m.Namespace, m.Name)
+		} else {
+			var format string
+			if count > 1 && count != len(machines) {
+				format = "%s, %s/%s"
+			} else if count == len(machines) {
+				format = "%s and %s/%s"
+			}
+			message = fmt.Sprintf(format, message, m.Namespace, m.Name)
+		}
+		count++
+	}
+	return message
 }

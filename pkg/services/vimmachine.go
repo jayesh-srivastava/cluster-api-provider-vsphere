@@ -1,3 +1,19 @@
+/*
+Copyright 2021 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package services
 
 import (
@@ -13,14 +29,15 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/utils/integer"
-	infrav1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
-	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/context"
-	infrautilv1 "sigs.k8s.io/cluster-api-provider-vsphere/pkg/util"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	clusterutilv1 "sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	infrav1 "sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
+	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/context"
+	infrautilv1 "sigs.k8s.io/cluster-api-provider-vsphere/pkg/util"
 )
 
 type VimMachineService struct{}
@@ -240,6 +257,7 @@ func (v *VimMachineService) reconcileProviderID(ctx *context.VIMMachineContext, 
 	return true, nil
 }
 
+//nolint:nestif
 func (v *VimMachineService) reconcileNetwork(ctx *context.VIMMachineContext, vm *unstructured.Unstructured) (bool, error) {
 	var errs []error
 	if networkStatusListOfIfaces, ok, _ := unstructured.NestedSlice(vm.Object, "status", "network"); ok {
@@ -373,45 +391,43 @@ func (v *VimMachineService) createOrUpdateVSPhereVM(ctx *context.VIMMachineConte
 
 // generateOverrideFunc returns a function which can override the values in the VSphereVM Spec
 // with the values from the FailureDomain (if any) set on the owner CAPI machine.
+//nolint:nestif
 func (v *VimMachineService) generateOverrideFunc(ctx *context.VIMMachineContext) (func(vm *infrav1.VSphereVM), bool) {
-	var overrideWithFailureDomainFunc func(vm *infrav1.VSphereVM)
-	if failureDomainName := ctx.Machine.Spec.FailureDomain; failureDomainName != nil {
-		var vsphereDeploymentZoneList infrav1.VSphereDeploymentZoneList
-		if err := ctx.Client.List(ctx, &vsphereDeploymentZoneList); err != nil {
-			ctx.Logger.Error(err, "unable to fetch list of deployment zones")
-			return overrideWithFailureDomainFunc, false
-		}
+	failureDomainName := ctx.Machine.Spec.FailureDomain
+	if failureDomainName == nil {
+		return nil, false
+	}
 
-		var vsphereFailureDomain infrav1.VSphereFailureDomain
-		if err := ctx.Client.Get(ctx, client.ObjectKey{Name: *failureDomainName}, &vsphereFailureDomain); err != nil {
-			ctx.Logger.Error(err, "unable to fetch failure domain", "name", *failureDomainName)
-			return overrideWithFailureDomainFunc, false
-		}
+	// Use the failureDomain name to fetch the vSphereDeploymentZone object
+	var vsphereDeploymentZone infrav1.VSphereDeploymentZone
+	if err := ctx.Client.Get(ctx, client.ObjectKey{Name: *failureDomainName}, &vsphereDeploymentZone); err != nil {
+		ctx.Logger.Error(err, "unable to fetch vsphere deployment zone", "name", *failureDomainName)
+		return nil, false
+	}
 
-		for index := range vsphereDeploymentZoneList.Items {
-			zone := vsphereDeploymentZoneList.Items[index]
-			if zone.Spec.FailureDomain == *failureDomainName {
-				overrideWithFailureDomainFunc = func(vm *infrav1.VSphereVM) {
-					vm.Spec.Server = zone.Spec.Server
-					vm.Spec.Datacenter = vsphereFailureDomain.Spec.Topology.Datacenter
-					if zone.Spec.PlacementConstraint.Folder != "" {
-						vm.Spec.Folder = zone.Spec.PlacementConstraint.Folder
-					}
-					if zone.Spec.PlacementConstraint.ResourcePool != "" {
-						vm.Spec.ResourcePool = zone.Spec.PlacementConstraint.ResourcePool
-					}
-					if vsphereFailureDomain.Spec.Topology.Datastore != "" {
-						vm.Spec.Datastore = vsphereFailureDomain.Spec.Topology.Datastore
-					}
-					if len(vsphereFailureDomain.Spec.Topology.Networks) > 0 {
-						vm.Spec.Network.Devices = overrideNetworkDeviceSpecs(vm.Spec.Network.Devices, vsphereFailureDomain.Spec.Topology.Networks)
-					}
-				}
-				return overrideWithFailureDomainFunc, true
-			}
+	var vsphereFailureDomain infrav1.VSphereFailureDomain
+	if err := ctx.Client.Get(ctx, client.ObjectKey{Name: vsphereDeploymentZone.Spec.FailureDomain}, &vsphereFailureDomain); err != nil {
+		ctx.Logger.Error(err, "unable to fetch failure domain", "name", vsphereDeploymentZone.Spec.FailureDomain)
+		return nil, false
+	}
+
+	overrideWithFailureDomainFunc := func(vm *infrav1.VSphereVM) {
+		vm.Spec.Server = vsphereDeploymentZone.Spec.Server
+		vm.Spec.Datacenter = vsphereFailureDomain.Spec.Topology.Datacenter
+		if vsphereDeploymentZone.Spec.PlacementConstraint.Folder != "" {
+			vm.Spec.Folder = vsphereDeploymentZone.Spec.PlacementConstraint.Folder
+		}
+		if vsphereDeploymentZone.Spec.PlacementConstraint.ResourcePool != "" {
+			vm.Spec.ResourcePool = vsphereDeploymentZone.Spec.PlacementConstraint.ResourcePool
+		}
+		if vsphereFailureDomain.Spec.Topology.Datastore != "" {
+			vm.Spec.Datastore = vsphereFailureDomain.Spec.Topology.Datastore
+		}
+		if len(vsphereFailureDomain.Spec.Topology.Networks) > 0 {
+			vm.Spec.Network.Devices = overrideNetworkDeviceSpecs(vm.Spec.Network.Devices, vsphereFailureDomain.Spec.Topology.Networks)
 		}
 	}
-	return overrideWithFailureDomainFunc, false
+	return overrideWithFailureDomainFunc, true
 }
 
 // overrideNetworkDeviceSpecs updates the network devices with the network definitions from the PlacementConstraint.

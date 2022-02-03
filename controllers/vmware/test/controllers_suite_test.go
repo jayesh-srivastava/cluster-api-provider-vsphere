@@ -33,6 +33,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 	"k8s.io/klog/klogr"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -44,12 +45,7 @@ import (
 	"sigs.k8s.io/cluster-api-provider-vsphere/controllers"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/context"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/manager"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
-	// +kubebuilder:scaffold:imports
 )
-
-// These tests use Ginkgo (BDD-style Go testing framework). Refer to
-// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
 	k8sClient     client.Client
@@ -74,14 +70,14 @@ func TestAPIs(t *testing.T) {
 }
 
 // TODO: can't call RunSpecs twice. Need to parameterize this externally and call the test suite twice
-//func TestAPIsLB(t *testing.T) {
-//	isLB = true
-//	RegisterFailHandler(Fail)
-//
-//	RunSpecsWithDefaultAndCustomReporters(t,
-//		"VMware Controller Suite with LB network provider",
-//		[]Reporter{printer.NewlineReporter{}})
-//}
+// func TestAPIsLB(t *testing.T) {
+// 	isLB = true
+// 	RegisterFailHandler(Fail)
+
+// 	RunSpecsWithDefaultAndCustomReporters(t,
+// 		"VMware Controller Suite with LB network provider",
+// 		[]Reporter{printer.NewlineReporter{}})
+// }
 
 func getTestEnv() (*envtest.Environment, *rest.Config) {
 	utilruntime.Must(clusterv1.AddToScheme(scheme.Scheme))

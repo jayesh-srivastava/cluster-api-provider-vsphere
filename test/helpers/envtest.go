@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:wrapcheck
 package helpers
 
 import (
@@ -90,6 +91,7 @@ func init() {
 
 	crdPaths := []string{
 		filepath.Join(root, "config", "default", "crd", "bases"),
+		filepath.Join(root, "config", "supervisor", "crd"),
 	}
 
 	// append CAPI CRDs path
@@ -172,6 +174,13 @@ func NewTestEnvironment() *TestEnvironment {
 			return err
 		}
 		if err := (&infrav1.VSphereDeploymentZoneList{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+
+		if err := (&infrav1.VSphereFailureDomain{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+		if err := (&infrav1.VSphereFailureDomainList{}).SetupWebhookWithManager(mgr); err != nil {
 			return err
 		}
 
