@@ -41,7 +41,7 @@ import (
 )
 
 // global Session map against sessionKeys
-// in map[sessionKey]Session
+// in map[sessionKey]Session.
 var sessionCache sync.Map
 
 // Session is a vSphere session with a configured Finder.
