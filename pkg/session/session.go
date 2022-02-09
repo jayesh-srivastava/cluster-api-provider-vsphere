@@ -34,13 +34,14 @@ import (
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
-	"github.com/vmware/govmomi/vim25/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/constants"
 )
 
+// global Session map against sessionKeys
+// in map[sessionKey]Session
 var sessionCache sync.Map
 
 // Session is a vSphere session with a configured Finder.
@@ -113,15 +114,7 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 
 		vimSessionActive, err := s.SessionManager.SessionIsActive(ctx)
 		if err != nil {
-			if soap.IsSoapFault(err) {
-				switch soap.ToSoapFault(err).VimFault().(type) {
-				case types.NotAuthenticated:
-				default:
-					return nil, err
-				}
-			} else {
-				return nil, err
-			}
+			logger.Error(err, "unable to check if vim session is active")
 		}
 
 		tagManagerSession, err := s.TagManager.Session(ctx)
@@ -223,6 +216,9 @@ func newClient(ctx context.Context, logger logr.Logger, sessionKey string, url *
 func clearCache(logger logr.Logger, sessionKey string) {
 	if cachedSession, ok := sessionCache.Load(sessionKey); ok {
 		s := cachedSession.(*Session)
+
+		// we check for tagmanager session
+		// because calling on expired session blocks
 		session, err := s.TagManager.Session(context.Background())
 		if err != nil {
 			logger.Error(err, "unable to get tag manager session")
