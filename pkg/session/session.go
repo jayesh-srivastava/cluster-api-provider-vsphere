@@ -219,28 +219,17 @@ func clearCache(logger logr.Logger, sessionKey string) {
 
 		// we check for tagmanager session
 		// because calling on expired session blocks
-		session, err := s.TagManager.Session(context.Background())
+		err := s.TagManager.Logout(context.Background())
 		if err != nil {
-			logger.Error(err, "unable to get tag manager session")
-		}
-		if session != nil {
-			logger.Info("found active tag manager session, logging out")
-			err := s.TagManager.Logout(context.Background())
-			if err != nil {
-				logger.Error(err, "unable to logout tag manager session")
-			}
+			logger.Error(err, "unable to logout tag manager session")
 		}
 
-		vimSessionActive, err := s.SessionManager.SessionIsActive(context.Background())
+		logger.Info("found active vim session, logging out")
+		err = s.SessionManager.Logout(context.Background())
 		if err != nil {
-			logger.Error(err, "unable to get vim client session")
-		} else if vimSessionActive {
-			logger.Info("found active vim session, logging out")
-			err := s.SessionManager.Logout(context.Background())
-			if err != nil {
-				logger.Error(err, "unable to logout vim session")
-			}
+			logger.Error(err, "unable to logout vim session")
 		}
+
 	}
 	sessionCache.Delete(sessionKey)
 }
@@ -251,15 +240,11 @@ func newManager(ctx context.Context, logger logr.Logger, sessionKey string, clie
 	if feature.EnableKeepAlive {
 		rc.Transport = keepalive.NewHandlerREST(rc, feature.KeepAliveDuration, func() error {
 			s, err := rc.Session(ctx)
-			if err != nil {
+			if err != nil || s == nil {
+				logger.Info("rest client session expired, clearing cache")
+				clearCache(logger, sessionKey)
 				return err
 			}
-			if s != nil {
-				return nil
-			}
-
-			logger.Info("rest client session expired, clearing cache")
-			clearCache(logger, sessionKey)
 			return nil
 		})
 	}
