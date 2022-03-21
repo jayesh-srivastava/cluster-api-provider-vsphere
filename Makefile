@@ -93,7 +93,7 @@ RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 # Development Docker variables
 DEV_REGISTRY ?= gcr.io/spectro-images-public/release/cluster-api-provider-vsphere
 DEV_CONTROLLER_IMG ?= $(DEV_REGISTRY)/cluster-api-vsphere-controller
-DEV_TAG ?= spectro-v0.8.1-20220120
+DEV_TAG ?= spectro-v0.8.1-20220321
 DEV_MANIFEST_IMG := $(DEV_CONTROLLER_IMG)
 
 # Set build time variables including git version details
