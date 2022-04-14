@@ -19,6 +19,7 @@ package session
 import (
 	"context"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -113,6 +114,13 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 		// if keepalive is enabled we depend upon roundtripper to reestablish the connection
 		// and remove the key if it could not
 		if params.feature.EnableKeepAlive {
+			restSession, restClientError := cachedSession.TagManager.Session(context.Background())
+			if restSession == nil && restClientError == nil {
+				if err := cachedSession.SessionManager.Logout(context.Background()); err != nil {
+					logger.V(0).Info("unable to logout vim client when rest client is already expired")
+				}
+				os.Exit(1)
+			}
 			return &cachedSession, nil
 		}
 		var err error
