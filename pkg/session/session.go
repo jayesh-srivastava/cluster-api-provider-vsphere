@@ -116,6 +116,7 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 		if params.feature.EnableKeepAlive {
 			restSession, restClientError := cachedSession.TagManager.Session(context.Background())
 			if restSession == nil && restClientError == nil {
+				logger.V(0).Info("rest client session is expired, logging out vim session and exiting")
 				if err := cachedSession.SessionManager.Logout(context.Background()); err != nil {
 					logger.V(0).Info("unable to logout vim client when rest client is already expired")
 				}
