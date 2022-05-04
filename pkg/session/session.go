@@ -34,15 +34,15 @@ import (
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
-	"github.com/vmware/govmomi/vim25/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"sigs.k8s.io/cluster-api-provider-vsphere/api/v1alpha4"
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/constants"
 )
 
+// global Session map against sessionKeys
+// in map[sessionKey]Session.
 var sessionCache sync.Map
-
 
 // Session is a vSphere session with a configured Finder.
 type Session struct {
@@ -114,20 +114,12 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 
 		vimSessionActive, err := s.SessionManager.SessionIsActive(ctx)
 		if err != nil {
-			if soap.IsSoapFault(err) {
-				switch soap.ToSoapFault(err).VimFault().(type) {
-				case types.NotAuthenticated:
-				default:
-					return nil, err
-				}
-			} else {
-				return nil, err
-			}
+			logger.Error(err, "unable to check if vim session is active")
 		}
 
 		tagManagerSession, err := s.TagManager.Session(ctx)
 		if err != nil {
-			return nil, err
+			logger.Error(err, "unable to check if rest session is active")
 		}
 
 		if vimSessionActive && tagManagerSession != nil {
@@ -172,7 +164,6 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 		session.datacenter = dc
 		session.Finder.SetDatacenter(dc)
 	}
-
 	// Cache the session.
 	sessionCache.Store(sessionKey, &session)
 
@@ -225,12 +216,15 @@ func newClient(ctx context.Context, logger logr.Logger, sessionKey string, url *
 func clearCache(logger logr.Logger, sessionKey string) {
 	if cachedSession, ok := sessionCache.Load(sessionKey); ok {
 		s := cachedSession.(*Session)
+
+		// check for the presence of tagmanager session
+		// since calling Logout on an expired session blocks
 		session, err := s.TagManager.Session(context.Background())
 		if err != nil {
 			logger.Error(err, "unable to get tag manager session")
 		}
 		if session != nil {
-			logger.Info("found active tag manager session, logging out")
+			logger.V(6).Info("found active tag manager session, logging out")
 			err := s.TagManager.Logout(context.Background())
 			if err != nil {
 				logger.Error(err, "unable to logout tag manager session")
@@ -240,21 +234,18 @@ func clearCache(logger logr.Logger, sessionKey string) {
 		vimSessionActive, err := s.SessionManager.SessionIsActive(context.Background())
 		if err != nil {
 			logger.Error(err, "unable to get vim client session")
-		} else {
-			if vimSessionActive {
-				logger.Info("found active vim session, logging out")
-				err := s.SessionManager.Logout(context.Background())
-				if err != nil {
-					logger.Error(err, "unable to logout vim session")
-				}
+		} else if vimSessionActive {
+			logger.V(6).Info("found active vim session, logging out")
+			err := s.SessionManager.Logout(context.Background())
+			if err != nil {
+				logger.Error(err, "unable to logout vim session")
 			}
 		}
 	}
-
 	sessionCache.Delete(sessionKey)
 }
 
-// newManager creates a Manager that encompasses the REST Client for the VSphere tagging API
+// newManager creates a Manager that encompasses the REST Client for the VSphere tagging API.
 func newManager(ctx context.Context, logger logr.Logger, sessionKey string, client *vim25.Client, user *url.Userinfo, feature Feature) (*tags.Manager, error) {
 	rc := rest.NewClient(client)
 	if feature.EnableKeepAlive {
@@ -267,13 +258,12 @@ func newManager(ctx context.Context, logger logr.Logger, sessionKey string, clie
 				return nil
 			}
 
-			logger.Info("rest client session expired, clearing cache")
+			logger.V(6).Info("rest client session expired, clearing cache")
 			clearCache(logger, sessionKey)
-			return nil
+			return errors.New("rest client session expired")
 		})
 	}
-	err := rc.Login(ctx, user)
-	if err != nil {
+	if err := rc.Login(ctx, user); err != nil {
 		return nil, err
 	}
 	return tags.NewManager(rc), nil
