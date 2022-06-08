@@ -182,7 +182,7 @@ func (r vsphereDeploymentZoneReconciler) reconcileNormal(ctx *context.VSphereDep
 
 	allDeploymentZonesReady := true
 	for _, deploymentZone := range deploymentZoneList.Items {
-		if shouldIncludeZone(deploymentZone, &vsphereClusterList.Items[0]) && deploymentZone.Status.Ready != nil && !*deploymentZone.Status.Ready {
+		if shouldIncludeZone(deploymentZone, &vsphereClusterList.Items[0]) && !pointer.BoolEqual(deploymentZone.Status.Ready, pointer.Bool(true)) {
 			allDeploymentZonesReady = false
 		}
 	}
