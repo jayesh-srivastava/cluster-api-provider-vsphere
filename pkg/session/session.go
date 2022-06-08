@@ -28,7 +28,6 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
-	"github.com/vmware/govmomi/session/keepalive"
 	"github.com/vmware/govmomi/vapi/rest"
 	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
@@ -64,11 +63,12 @@ func DefaultFeature() Feature {
 }
 
 type Params struct {
-	server     string
-	datacenter string
-	userinfo   *url.Userinfo
-	thumbprint string
-	feature    Feature
+	server            string
+	datacenter        string
+	userinfo          *url.Userinfo
+	thumbprint        string
+	feature           Feature
+	refreshRestClient bool
 }
 
 func NewParams() *Params {
@@ -102,6 +102,11 @@ func (p *Params) WithFeatures(feature Feature) *Params {
 	return p
 }
 
+func (p *Params) RefreshRestClient() *Params {
+	p.refreshRestClient = true
+	return p
+}
+
 // GetOrCreate gets a cached session or creates a new one if one does not
 // already exist.
 func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
@@ -122,9 +127,17 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 			logger.Error(err, "unable to check if rest session is active")
 		}
 
-		if vimSessionActive && tagManagerSession != nil {
-			logger.V(2).Info("found active cached vSphere client session")
-			return s, nil
+		if vimSessionActive {
+			returnCached := true
+			if tagManagerSession == nil && params.refreshRestClient {
+				returnCached = false
+			}
+
+			if returnCached {
+				logger.V(2).Info("found active cached vSphere client session")
+				return s, nil
+			}
+
 		}
 	}
 
@@ -248,21 +261,6 @@ func clearCache(logger logr.Logger, sessionKey string) {
 // newManager creates a Manager that encompasses the REST Client for the VSphere tagging API.
 func newManager(ctx context.Context, logger logr.Logger, sessionKey string, client *vim25.Client, user *url.Userinfo, feature Feature) (*tags.Manager, error) {
 	rc := rest.NewClient(client)
-	if feature.EnableKeepAlive {
-		rc.Transport = keepalive.NewHandlerREST(rc, feature.KeepAliveDuration, func() error {
-			s, err := rc.Session(ctx)
-			if err != nil {
-				return err
-			}
-			if s != nil {
-				return nil
-			}
-
-			logger.V(6).Info("rest client session expired, clearing cache")
-			clearCache(logger, sessionKey)
-			return errors.New("rest client session expired")
-		})
-	}
 	if err := rc.Login(ctx, user); err != nil {
 		return nil, err
 	}
