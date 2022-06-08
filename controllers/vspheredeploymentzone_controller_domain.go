@@ -30,10 +30,6 @@ import (
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/taggable"
 )
 
-var (
-	VSphereFailureDomainReconcileSuccessful = false
-)
-
 func (r vsphereDeploymentZoneReconciler) reconcileFailureDomain(ctx *context.VSphereDeploymentZoneContext) error {
 	logger := ctrl.LoggerFrom(ctx).WithValues("failure domain", ctx.VSphereFailureDomain.Name)
 
@@ -66,17 +62,12 @@ func (r vsphereDeploymentZoneReconciler) reconcileFailureDomain(ctx *context.VSp
 }
 
 func (r vsphereDeploymentZoneReconciler) reconcileInfraFailureDomain(ctx *context.VSphereDeploymentZoneContext, failureDomain infrav1.FailureDomain) error {
-	if VSphereFailureDomainReconcileSuccessful {
-		return nil
-	}
-
 	if *failureDomain.AutoConfigure {
 		return r.createAndAttachMetadata(ctx, failureDomain)
 	}
 	if err := r.verifyFailureDomain(ctx, failureDomain); err != nil {
 		return err
 	}
-	VSphereFailureDomainReconcileSuccessful = true
 	return nil
 }
 

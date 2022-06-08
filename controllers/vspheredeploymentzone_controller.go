@@ -164,12 +164,40 @@ func (r vsphereDeploymentZoneReconciler) Reconcile(ctx goctx.Context, request re
 }
 
 func (r vsphereDeploymentZoneReconciler) reconcileNormal(ctx *context.VSphereDeploymentZoneContext) (reconcile.Result, error) {
-	authSession, err := r.getVCenterSession(ctx)
+	deploymentZoneList := &infrav1.VSphereDeploymentZoneList{}
+	err := r.Client.List(ctx, deploymentZoneList)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	vsphereClusterList := &infrav1.VSphereClusterList{}
+	if err := r.Client.List(ctx, vsphereClusterList, client.InNamespace(r.Namespace)); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if len(vsphereClusterList.Items) != 1 {
+		r.Logger.V(0).Info("more than one vspherecluster in namespace")
+		return reconcile.Result{}, nil
+	}
+
+	allDeploymentZonesReady := true
+	for _, deploymentZone := range deploymentZoneList.Items {
+		if shouldIncludeZone(deploymentZone, &vsphereClusterList.Items[0]) && deploymentZone.Status.Ready != nil && !*deploymentZone.Status.Ready {
+			allDeploymentZonesReady = false
+		}
+	}
+
+	authSession, err := r.getVCenterSession(ctx, allDeploymentZonesReady)
 	if err != nil {
 		ctx.Logger.V(4).Error(err, "unable to create session")
 		conditions.MarkFalse(ctx.VSphereDeploymentZone, infrav1.VCenterAvailableCondition, infrav1.VCenterUnreachableReason, clusterv1.ConditionSeverityError, err.Error())
 		ctx.VSphereDeploymentZone.Status.Ready = pointer.Bool(false)
 		return reconcile.Result{}, errors.Wrapf(err, "unable to create auth session")
+	}
+
+	if allDeploymentZonesReady {
+		ctx.Logger.V(0).Info("all deploymentzones are reconciled skippin")
+		authSession.TagManager.Logout(ctx)
 	}
 	ctx.AuthSession = authSession
 	conditions.MarkTrue(ctx.VSphereDeploymentZone, infrav1.VCenterAvailableCondition)
@@ -180,13 +208,15 @@ func (r vsphereDeploymentZoneReconciler) reconcileNormal(ctx *context.VSphereDep
 	}
 	conditions.MarkTrue(ctx.VSphereDeploymentZone, infrav1.PlacementConstraintMetCondition)
 
-	// reconcile the failure domain
-	if err := r.reconcileFailureDomain(ctx); err != nil {
-		ctx.Logger.V(4).Error(err, "failed to reconcile failure domain", "failureDomain", ctx.VSphereDeploymentZone.Spec.FailureDomain)
-		ctx.VSphereDeploymentZone.Status.Ready = pointer.Bool(false)
-		return reconcile.Result{}, errors.Wrapf(err, "failed to reconcile failure domain")
+	if !allDeploymentZonesReady {
+		// reconcile the failure domain
+		if err := r.reconcileFailureDomain(ctx); err != nil {
+			ctx.Logger.V(4).Error(err, "failed to reconcile failure domain", "failureDomain", ctx.VSphereDeploymentZone.Spec.FailureDomain)
+			ctx.VSphereDeploymentZone.Status.Ready = pointer.Bool(false)
+			return reconcile.Result{}, errors.Wrapf(err, "failed to reconcile failure domain")
+		}
+		conditions.MarkTrue(ctx.VSphereDeploymentZone, infrav1.VSphereFailureDomainValidatedCondition)
 	}
-	conditions.MarkTrue(ctx.VSphereDeploymentZone, infrav1.VSphereFailureDomainValidatedCondition)
 
 	ctx.VSphereDeploymentZone.Status.Ready = pointer.Bool(true)
 	return reconcile.Result{}, nil
@@ -213,7 +243,7 @@ func (r vsphereDeploymentZoneReconciler) reconcilePlacementConstraint(ctx *conte
 	return nil
 }
 
-func (r vsphereDeploymentZoneReconciler) getVCenterSession(ctx *context.VSphereDeploymentZoneContext) (*session.Session, error) {
+func (r vsphereDeploymentZoneReconciler) getVCenterSession(ctx *context.VSphereDeploymentZoneContext, allDeploymentZonesReady bool) (*session.Session, error) {
 	params := session.NewParams().
 		WithServer(ctx.VSphereDeploymentZone.Spec.Server).
 		WithDatacenter(ctx.VSphereFailureDomain.Spec.Topology.Datacenter).
@@ -222,6 +252,10 @@ func (r vsphereDeploymentZoneReconciler) getVCenterSession(ctx *context.VSphereD
 			EnableKeepAlive:   r.EnableKeepAlive,
 			KeepAliveDuration: r.KeepAliveDuration,
 		})
+
+	if !allDeploymentZonesReady {
+		params.RefreshRestClient()
+	}
 
 	clusterList := &infrav1.VSphereClusterList{}
 	if err := r.Client.List(ctx, clusterList); err != nil {
