@@ -44,6 +44,10 @@ import (
 	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/session"
 )
 
+var (
+	loggedOutRestClient = true
+)
+
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=vspheredeploymentzones,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=vspheredeploymentzones/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=vspherefailuredomains,verbs=get;list;watch;create;update;patch;delete
@@ -196,8 +200,13 @@ func (r vsphereDeploymentZoneReconciler) reconcileNormal(ctx *context.VSphereDep
 	}
 
 	if allDeploymentZonesReady {
-		ctx.Logger.V(0).Info("all deploymentzones are reconciled skippin")
-		authSession.TagManager.Logout(ctx)
+		ctx.Logger.V(0).Info("all deploymentzones are reconciled skipping reconcile")
+		if !loggedOutRestClient {
+			ctx.Logger.V(0).Info("logging out rest client")
+			authSession.TagManager.Logout(ctx)
+			loggedOutRestClient = true
+		}
+
 	}
 	ctx.AuthSession = authSession
 	conditions.MarkTrue(ctx.VSphereDeploymentZone, infrav1.VCenterAvailableCondition)
@@ -251,10 +260,11 @@ func (r vsphereDeploymentZoneReconciler) getVCenterSession(ctx *context.VSphereD
 		WithFeatures(session.Feature{
 			EnableKeepAlive:   r.EnableKeepAlive,
 			KeepAliveDuration: r.KeepAliveDuration,
-		})
+		}).Caller("vsphereDeploymentZoneReconciler")
 
 	if !allDeploymentZonesReady {
 		params.RefreshRestClient()
+		loggedOutRestClient = false
 	}
 
 	clusterList := &infrav1.VSphereClusterList{}

@@ -359,7 +359,7 @@ func (r clusterReconciler) reconcileVCenterConnectivity(ctx *context.ClusterCont
 		WithFeatures(session.Feature{
 			EnableKeepAlive:   r.EnableKeepAlive,
 			KeepAliveDuration: r.KeepAliveDuration,
-		})
+		}).Caller("clusterReconciler")
 
 	if ctx.VSphereCluster.Spec.IdentityRef != nil {
 		creds, err := identity.GetCredentials(ctx, r.Client, ctx.VSphereCluster, r.Namespace)
@@ -388,7 +388,7 @@ func (r clusterReconciler) reconcileDeploymentZones(ctx *context.ClusterContext)
 	readyNotReported, notReady := 0, 0
 	failureDomains := clusterv1.FailureDomains{}
 	for _, zone := range deploymentZoneList.Items {
-		if shouldIncludeZone(zone, ctx.VSphereCluster)  {
+		if shouldIncludeZone(zone, ctx.VSphereCluster) {
 			if zone.Status.Ready == nil {
 				readyNotReported++
 				failureDomains[zone.Name] = clusterv1.FailureDomainSpec{
