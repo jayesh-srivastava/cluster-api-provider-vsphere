@@ -117,29 +117,21 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 		s := cachedSession.(*Session)
 		logger = logger.WithValues("server", params.server, "datacenter", params.datacenter)
 
-		vimSessionActive, err := s.SessionManager.SessionIsActive(ctx)
-		if err != nil {
-			logger.Error(err, "unable to check if vim session is active")
+		returnCached := true
+		if params.refreshRestClient {
+			tagManagerSession, err := s.TagManager.Session(ctx)
+			if err != nil {
+				logger.Error(err, "unable to check if rest session is active")
+			}
+
+			if tagManagerSession == nil {
+				returnCached = false
+			}
 		}
 
-		if vimSessionActive {
-			returnCached := true
-			if params.refreshRestClient {
-				tagManagerSession, err := s.TagManager.Session(ctx)
-				if err != nil {
-					logger.Error(err, "unable to check if rest session is active")
-				}
-
-				if tagManagerSession == nil {
-					returnCached = false
-				}
-			}
-
-			if returnCached {
-				logger.V(2).Info("found active cached vSphere client session")
-				return s, nil
-			}
-
+		if returnCached {
+			logger.V(2).Info("found active cached vSphere client session")
+			return s, nil
 		}
 	}
 
