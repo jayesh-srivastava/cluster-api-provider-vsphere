@@ -122,15 +122,17 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 			logger.Error(err, "unable to check if vim session is active")
 		}
 
-		tagManagerSession, err := s.TagManager.Session(ctx)
-		if err != nil {
-			logger.Error(err, "unable to check if rest session is active")
-		}
-
 		if vimSessionActive {
 			returnCached := true
-			if tagManagerSession == nil && params.refreshRestClient {
-				returnCached = false
+			if params.refreshRestClient {
+				tagManagerSession, err := s.TagManager.Session(ctx)
+				if err != nil {
+					logger.Error(err, "unable to check if rest session is active")
+				}
+
+				if tagManagerSession == nil {
+					returnCached = false
+				}
 			}
 
 			if returnCached {
