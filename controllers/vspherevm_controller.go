@@ -460,7 +460,7 @@ func (r *vmReconciler) retrieveVcenterSession(ctx goctx.Context, vsphereVM *infr
 		WithFeatures(session.Feature{
 			EnableKeepAlive:   r.EnableKeepAlive,
 			KeepAliveDuration: r.KeepAliveDuration,
-		})
+		}).Caller("vmReconciler")
 	cluster, err := clusterutilv1.GetClusterFromMetadata(r.ControllerContext, r.Client, vsphereVM.ObjectMeta)
 	if err != nil {
 		r.Logger.Info("VsphereVM is missing cluster label or cluster does not exist")

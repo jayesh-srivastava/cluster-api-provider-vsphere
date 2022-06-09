@@ -42,6 +42,7 @@ import (
 // global Session map against sessionKeys
 // in map[sessionKey]Session.
 var sessionCache sync.Map
+var restClientLoggedOut = true
 
 // Session is a vSphere session with a configured Finder.
 type Session struct {
@@ -69,6 +70,7 @@ type Params struct {
 	thumbprint        string
 	feature           Feature
 	refreshRestClient bool
+	caller            string
 }
 
 func NewParams() *Params {
@@ -107,13 +109,19 @@ func (p *Params) RefreshRestClient() *Params {
 	return p
 }
 
+func (p *Params) Caller(name string) *Params {
+	p.caller = name
+	return p
+}
+
 // GetOrCreate gets a cached session or creates a new one if one does not
 // already exist.
 func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 	logger := ctrl.LoggerFrom(ctx).WithName("session")
-
+	logger.V(0).Info("creation request from", "name", params.caller)
 	sessionKey := params.server + params.userinfo.Username() + params.datacenter
 	if cachedSession, ok := sessionCache.Load(sessionKey); ok {
+		logger.V(0).Info("session cache present")
 		s := cachedSession.(*Session)
 		logger = logger.WithValues("server", params.server, "datacenter", params.datacenter)
 
@@ -130,9 +138,11 @@ func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 		}
 
 		if returnCached {
-			logger.V(2).Info("found active cached vSphere client session")
+			logger.V(0).Info("using cached clients")
 			return s, nil
 		}
+	} else {
+		logger.V(0).Info("no session cache present creating")
 	}
 
 	clearCache(logger, sessionKey)
@@ -217,6 +227,7 @@ func newClient(ctx context.Context, logger logr.Logger, sessionKey string, url *
 		return nil, err
 	}
 
+	logger.V(0).Info("new vim client created")
 	return c, nil
 }
 
@@ -242,13 +253,14 @@ func clearCache(logger logr.Logger, sessionKey string) {
 		if err != nil {
 			logger.Error(err, "unable to get vim client session")
 		} else if vimSessionActive {
-			logger.V(6).Info("found active vim session, logging out")
+			logger.V(0).Info("found active vim session, logging out")
 			err := s.SessionManager.Logout(context.Background())
 			if err != nil {
 				logger.Error(err, "unable to logout vim session")
 			}
 		}
 	}
+	logger.V(0).Info("session cache flushed")
 	sessionCache.Delete(sessionKey)
 }
 
@@ -258,6 +270,7 @@ func newManager(ctx context.Context, logger logr.Logger, sessionKey string, clie
 	if err := rc.Login(ctx, user); err != nil {
 		return nil, err
 	}
+	logger.V(0).Info("new rest client created")
 	return tags.NewManager(rc), nil
 }
 
