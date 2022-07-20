@@ -407,7 +407,7 @@ func (v *VimMachineService) generateOverrideFunc(ctx *context.VIMMachineContext)
 
 	var vsphereFailureDomain infrav1.VSphereFailureDomain
 	if err := ctx.Client.Get(ctx, client.ObjectKey{Name: vsphereDeploymentZone.Spec.FailureDomain}, &vsphereFailureDomain); err != nil {
-		ctx.Logger.Error(err, "unable to fetch failure domain", "name", vsphereDeploymentZone.Spec.FailureDomain)
+		ctx.Logger.V(4).Info("unable to fetch failure domain", "name", *failureDomainName, "skip generating override")
 		return nil, false
 	}
 
