@@ -225,59 +225,61 @@ func main() {
 }
 
 func setupVAPIControllers(ctx *context.ControllerManagerContext, mgr ctrlmgr.Manager) error {
-	if err := (&v1beta1.VSphereClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
+	if managerOpts.Port != 0 {
+		if err := (&v1beta1.VSphereClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
 
-	if err := (&v1beta1.VSphereMachine{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
-	if err := (&v1beta1.VSphereMachineList{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
+		if err := (&v1beta1.VSphereMachine{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+		if err := (&v1beta1.VSphereMachineList{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
 
-	if err := (&v1beta1.VSphereMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
-	if err := (&v1beta1.VSphereMachineTemplateList{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
+		if err := (&v1beta1.VSphereMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+		if err := (&v1beta1.VSphereMachineTemplateList{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
 
-	if err := (&v1beta1.VSphereVM{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
-	if err := (&v1beta1.VSphereVMList{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
+		if err := (&v1beta1.VSphereVM{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+		if err := (&v1beta1.VSphereVMList{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
 
-	if err := (&v1beta1.VSphereDeploymentZone{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
-	if err := (&v1beta1.VSphereDeploymentZoneList{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
+		if err := (&v1beta1.VSphereDeploymentZone{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+		if err := (&v1beta1.VSphereDeploymentZoneList{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
 
-	if err := (&v1beta1.VSphereFailureDomain{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
-	if err := (&v1beta1.VSphereFailureDomainList{}).SetupWebhookWithManager(mgr); err != nil {
-		return err
-	}
-
-	if err := controllers.AddClusterControllerToManager(ctx, mgr, &v1beta1.VSphereCluster{}); err != nil {
-		return err
-	}
-	if err := controllers.AddMachineControllerToManager(ctx, mgr, &v1beta1.VSphereMachine{}); err != nil {
-		return err
-	}
-	if err := controllers.AddVMControllerToManager(ctx, mgr); err != nil {
-		return err
-	}
-	if err := controllers.AddVsphereClusterIdentityControllerToManager(ctx, mgr); err != nil {
-		return err
-	}
-	if err := controllers.AddVSphereDeploymentZoneControllerToManager(ctx, mgr); err != nil {
-		return err
+		if err := (&v1beta1.VSphereFailureDomain{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+		if err := (&v1beta1.VSphereFailureDomainList{}).SetupWebhookWithManager(mgr); err != nil {
+			return err
+		}
+	} else {
+		if err := controllers.AddClusterControllerToManager(ctx, mgr, &v1beta1.VSphereCluster{}); err != nil {
+			return err
+		}
+		if err := controllers.AddMachineControllerToManager(ctx, mgr, &v1beta1.VSphereMachine{}); err != nil {
+			return err
+		}
+		if err := controllers.AddVMControllerToManager(ctx, mgr); err != nil {
+			return err
+		}
+		if err := controllers.AddVsphereClusterIdentityControllerToManager(ctx, mgr); err != nil {
+			return err
+		}
+		if err := controllers.AddVSphereDeploymentZoneControllerToManager(ctx, mgr); err != nil {
+			return err
+		}
 	}
 	return nil
 }
