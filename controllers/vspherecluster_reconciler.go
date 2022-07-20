@@ -298,7 +298,7 @@ func (r clusterReconciler) reconcileVCenterConnectivity(ctx *context.ClusterCont
 		WithThumbprint(ctx.VSphereCluster.Spec.Thumbprint).
 		WithFeatures(session.Feature{
 			KeepAliveDuration: r.KeepAliveDuration,
-		})
+		}).Caller("clusterReconciler")
 
 	if ctx.VSphereCluster.Spec.IdentityRef != nil {
 		creds, err := identity.GetCredentials(ctx, r.Client, ctx.VSphereCluster, r.Namespace)

@@ -28,7 +28,6 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/session"
-	"github.com/vmware/govmomi/session/keepalive"
 	"github.com/vmware/govmomi/vapi/rest"
 	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25"
@@ -37,11 +36,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"sigs.k8s.io/cluster-api-provider-vsphere/apis/v1beta1"
+	"sigs.k8s.io/cluster-api-provider-vsphere/pkg/constants"
 )
 
 // global Session map against sessionKeys
 // in map[sessionKey]Session.
 var sessionCache sync.Map
+var restClientLoggedOut = true
 
 // Session is a vSphere session with a configured Finder.
 type Session struct {
@@ -52,19 +53,24 @@ type Session struct {
 }
 
 type Feature struct {
+	EnableKeepAlive   bool
 	KeepAliveDuration time.Duration
 }
 
 func DefaultFeature() Feature {
-	return Feature{}
+	return Feature{
+		EnableKeepAlive: constants.DefaultEnableKeepAlive,
+	}
 }
 
 type Params struct {
-	server     string
-	datacenter string
-	userinfo   *url.Userinfo
-	thumbprint string
-	feature    Feature
+	server            string
+	datacenter        string
+	userinfo          *url.Userinfo
+	thumbprint        string
+	feature           Feature
+	refreshRestClient bool
+	caller            string
 }
 
 func NewParams() *Params {
@@ -98,30 +104,45 @@ func (p *Params) WithFeatures(feature Feature) *Params {
 	return p
 }
 
+func (p *Params) RefreshRestClient() *Params {
+	p.refreshRestClient = true
+	return p
+}
+
+func (p *Params) Caller(name string) *Params {
+	p.caller = name
+	return p
+}
+
 // GetOrCreate gets a cached session or creates a new one if one does not
 // already exist.
 func GetOrCreate(ctx context.Context, params *Params) (*Session, error) {
 	logger := ctrl.LoggerFrom(ctx).WithName("session")
-
+	logger.V(0).Info("creation request from", "name", params.caller)
 	sessionKey := params.server + params.userinfo.Username() + params.datacenter
 	if cachedSession, ok := sessionCache.Load(sessionKey); ok {
+		logger.V(0).Info("session cache present")
 		s := cachedSession.(*Session)
 		logger = logger.WithValues("server", params.server, "datacenter", params.datacenter)
 
-		vimSessionActive, err := s.SessionManager.SessionIsActive(ctx)
-		if err != nil {
-			logger.Error(err, "unable to check if vim session is active")
+		returnCached := true
+		if params.refreshRestClient {
+			tagManagerSession, err := s.TagManager.Session(ctx)
+			if err != nil {
+				logger.Error(err, "unable to check if rest session is active")
+			}
+
+			if tagManagerSession == nil {
+				returnCached = false
+			}
 		}
 
-		tagManagerSession, err := s.TagManager.Session(ctx)
-		if err != nil {
-			logger.Error(err, "unable to check if rest session is active")
-		}
-
-		if vimSessionActive && tagManagerSession != nil {
-			logger.V(2).Info("found active cached vSphere client session")
+		if returnCached {
+			logger.V(0).Info("using cached clients")
 			return s, nil
 		}
+	} else {
+		logger.V(0).Info("no session cache present creating")
 	}
 
 	clearCache(logger, sessionKey)
@@ -185,25 +206,28 @@ func newClient(ctx context.Context, logger logr.Logger, sessionKey string, url *
 		SessionManager: session.NewManager(vimClient),
 	}
 
-	vimClient.RoundTripper = session.KeepAliveHandler(vimClient.RoundTripper, feature.KeepAliveDuration, func(tripper soap.RoundTripper) error {
-		// we tried implementing
-		// c.Login here but the client once logged out
-		// keeps errong in invalid username or password
-		// we tried with cached username and password in session still the error persisted
-		// hence we just clear the cache and expect the client to
-		// be recreated in next GetOrCreate call
-		_, err := methods.GetCurrentTime(ctx, tripper)
-		if err != nil {
-			logger.Error(err, "failed to keep alive govmomi client")
-			clearCache(logger, sessionKey)
-		}
-		return err
-	})
+	if feature.EnableKeepAlive {
+		vimClient.RoundTripper = session.KeepAliveHandler(vimClient.RoundTripper, feature.KeepAliveDuration, func(tripper soap.RoundTripper) error {
+			// we tried implementing
+			// c.Login here but the client once logged out
+			// keeps errong in invalid username or password
+			// we tried with cached username and password in session still the error persisted
+			// hence we just clear the cache and expect the client to
+			// be recreated in next GetOrCreate call
+			_, err := methods.GetCurrentTime(ctx, tripper)
+			if err != nil {
+				logger.Error(err, "failed to keep alive govmomi client")
+				clearCache(logger, sessionKey)
+			}
+			return err
+		})
+	}
 
 	if err := c.Login(ctx, url.User); err != nil {
 		return nil, err
 	}
 
+	logger.V(0).Info("new vim client created")
 	return c, nil
 }
 
@@ -229,35 +253,24 @@ func clearCache(logger logr.Logger, sessionKey string) {
 		if err != nil {
 			logger.Error(err, "unable to get vim client session")
 		} else if vimSessionActive {
-			logger.V(6).Info("found active vim session, logging out")
+			logger.V(0).Info("found active vim session, logging out")
 			err := s.SessionManager.Logout(context.Background())
 			if err != nil {
 				logger.Error(err, "unable to logout vim session")
 			}
 		}
 	}
+	logger.V(0).Info("session cache flushed")
 	sessionCache.Delete(sessionKey)
 }
 
 // newManager creates a Manager that encompasses the REST Client for the VSphere tagging API.
 func newManager(ctx context.Context, logger logr.Logger, sessionKey string, client *vim25.Client, user *url.Userinfo, feature Feature) (*tags.Manager, error) {
 	rc := rest.NewClient(client)
-	rc.Transport = keepalive.NewHandlerREST(rc, feature.KeepAliveDuration, func() error {
-		s, err := rc.Session(ctx)
-		if err != nil {
-			return err
-		}
-		if s != nil {
-			return nil
-		}
-
-		logger.V(6).Info("rest client session expired, clearing cache")
-		clearCache(logger, sessionKey)
-		return errors.New("rest client session expired")
-	})
 	if err := rc.Login(ctx, user); err != nil {
 		return nil, err
 	}
+	logger.V(0).Info("new rest client created")
 	return tags.NewManager(rc), nil
 }
 

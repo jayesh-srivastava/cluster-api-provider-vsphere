@@ -275,7 +275,7 @@ func (r vsphereDeploymentZoneReconciler) getVCenterSession(ctx *context.VSphereD
 		WithUserInfo(r.ControllerContext.Username, r.ControllerContext.Password).
 		WithFeatures(session.Feature{
 			KeepAliveDuration: r.KeepAliveDuration,
-		})
+		}).Caller("vsphereDeploymentZoneReconciler")
 
 	if !allDeploymentZonesReady {
 		params.RefreshRestClient()
