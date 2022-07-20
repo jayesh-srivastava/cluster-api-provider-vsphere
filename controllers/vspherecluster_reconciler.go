@@ -20,6 +20,7 @@ package controllers
 import (
 	goctx "context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -326,7 +327,7 @@ func (r clusterReconciler) reconcileDeploymentZones(ctx *context.ClusterContext)
 	readyNotReported, notReady := 0, 0
 	failureDomains := clusterv1.FailureDomains{}
 	for _, zone := range deploymentZoneList.Items {
-		if zone.Spec.Server == ctx.VSphereCluster.Spec.Server {
+		if shouldIncludeZone(zone, ctx.VSphereCluster) {
 			if zone.Status.Ready == nil {
 				readyNotReported++
 				failureDomains[zone.Name] = clusterv1.FailureDomainSpec{
@@ -361,6 +362,26 @@ func (r clusterReconciler) reconcileDeploymentZones(ctx *context.ClusterContext)
 		conditions.Delete(ctx.VSphereCluster, infrav1.FailureDomainsAvailableCondition)
 	}
 	return true, nil
+}
+
+func shouldIncludeZone(zone infrav1.VSphereDeploymentZone, cluster *infrav1.VSphereCluster) bool {
+	deploymentZones, annotationExists := cluster.GetAnnotations()["vsphere.infrastructure.cluster.x-k8s.io/adopt-deploymentzone"]
+	// we have not annotated the cluster yet skip all reconciles
+	if !annotationExists {
+		return false
+	}
+	deploymentZonesList := strings.Split(deploymentZones, ":")
+	return zone.Spec.Server == cluster.Spec.Server && contains(deploymentZonesList, zone.GetName())
+}
+
+func contains(list []string, search string) bool {
+	for _, item := range list {
+		if item == search {
+			return true
+		}
+	}
+
+	return false
 }
 
 var (
