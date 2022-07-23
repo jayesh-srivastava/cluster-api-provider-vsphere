@@ -235,29 +235,16 @@ func clearCache(logger logr.Logger, sessionKey string) {
 	if cachedSession, ok := sessionCache.Load(sessionKey); ok {
 		s := cachedSession.(*Session)
 
-		// check for the presence of tagmanager session
-		// since calling Logout on an expired session blocks
-		session, err := s.TagManager.Session(context.Background())
+		logger.V(0).Info("tag manager session, logging out")
+		err := s.TagManager.Logout(context.Background())
 		if err != nil {
-			logger.Error(err, "unable to get tag manager session")
-		}
-		if session != nil {
-			logger.V(6).Info("found active tag manager session, logging out")
-			err := s.TagManager.Logout(context.Background())
-			if err != nil {
-				logger.Error(err, "unable to logout tag manager session")
-			}
+			logger.Error(err, "unable to logout tag manager session")
 		}
 
-		vimSessionActive, err := s.SessionManager.SessionIsActive(context.Background())
+		logger.V(0).Info("vim session, logging out")
+		err = s.SessionManager.Logout(context.Background())
 		if err != nil {
-			logger.Error(err, "unable to get vim client session")
-		} else if vimSessionActive {
-			logger.V(0).Info("found active vim session, logging out")
-			err := s.SessionManager.Logout(context.Background())
-			if err != nil {
-				logger.Error(err, "unable to logout vim session")
-			}
+			logger.Error(err, "unable to logout vim session")
 		}
 	}
 	logger.V(0).Info("session cache flushed")
