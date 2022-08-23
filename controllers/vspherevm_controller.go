@@ -175,7 +175,13 @@ func (r vmReconciler) Reconcile(ctx goctx.Context, req ctrl.Request) (_ ctrl.Res
 	if failureDomain := machine.Spec.FailureDomain; failureDomain != nil {
 		vsphereDeploymentZone := &infrav1.VSphereDeploymentZone{}
 		if err := r.Client.Get(r, apitypes.NamespacedName{Name: *failureDomain}, vsphereDeploymentZone); err != nil {
-			return reconcile.Result{}, errors.Wrapf(err, "failed to find vsphere deployment zone %s", *failureDomain)
+			if apierrors.IsNotFound(err) && !vsphereVM.GetDeletionTimestamp().IsZero() {
+				r.Logger.Info("we got deleting machine with missing failure domain go ahead")
+			} else if apierrors.IsNotFound(err) {
+				r.Logger.Info("ignoring vspheredeploymentzone not found, might be worker vm")
+			} else {
+				return reconcile.Result{}, errors.Wrapf(err, "failed to find vsphere deployment zone %s", *failureDomain)
+			}
 		}
 
 		vsphereFailureDomain = &infrav1.VSphereFailureDomain{}
