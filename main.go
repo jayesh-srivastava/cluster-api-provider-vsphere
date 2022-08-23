@@ -204,8 +204,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupChecks(mgr)
-
 	sigHandler := ctrlsig.SetupSignalHandler()
 	setupLog.Info("starting controller manager")
 	if err := mgr.Start(sigHandler); err != nil {
@@ -264,6 +262,7 @@ func setupVAPIControllers(ctx *context.ControllerManagerContext, mgr ctrlmgr.Man
 		if err := (&v1beta1.VSphereFailureDomainList{}).SetupWebhookWithManager(mgr); err != nil {
 			return err
 		}
+		setupChecks(mgr)
 	} else {
 		if err := controllers.AddClusterControllerToManager(ctx, mgr, &v1beta1.VSphereCluster{}); err != nil {
 			return err
